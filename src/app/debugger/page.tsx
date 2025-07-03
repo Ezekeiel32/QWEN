@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
+import Link from 'next/link';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { SendHorizonal, Bot, User, FileCode, Check, ChevronsUpDown, Search, Folder, FolderOpen, Minus } from "lucide-react";
+import { SendHorizonal, Bot, User, FileCode, Check, ChevronsUpDown, Search, Folder, FolderOpen } from "lucide-react";
 import { CodeChangeCard } from "@/components/cards/CodeChangeCard";
 import type { ChatMessage, CodeFile, Repository } from "@/types";
 import { useAppContext } from "@/contexts/AppContext";
@@ -116,6 +117,25 @@ export default function DebuggerPage() {
 
   const handleSend = async () => {
     if (!input.trim() || !selectedRepo) return;
+    setIsLoading(true);
+
+    if (!settings.ollamaUrl || !settings.ollamaModel) {
+      toast({
+        variant: "destructive",
+        title: "AI Not Configured",
+        description: (
+            <p>
+              Please configure your Ollama server URL and model name in the{' '}
+              <Link href="/settings" className="underline font-bold">
+                Settings
+              </Link>{' '}
+              page.
+            </p>
+        ),
+      });
+      setIsLoading(false);
+      return;
+    }
 
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
@@ -124,7 +144,6 @@ export default function DebuggerPage() {
     };
     setMessages(prev => [...prev, userMessage]);
     setInput("");
-    setIsLoading(true);
 
     try {
       const contextFiles = selectedRepo.files.filter(file => selectedFilePaths.has(file.path));

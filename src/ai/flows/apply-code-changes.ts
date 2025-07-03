@@ -42,8 +42,11 @@ ${originalCode}
 Now, provide the full and complete code with the changes applied.`;
 
     try {
-        if (!ollamaUrl || !ollamaModel) {
-            throw new Error("Ollama URL or model is not configured. Please check your settings.");
+        if (!ollamaUrl) {
+            throw new Error("Ollama URL is not configured. Please set it in the Settings page.");
+        }
+        if (!ollamaModel) {
+            throw new Error("Ollama Model is not configured. Please set it in the Settings page.");
         }
         const finalUrl = ollamaUrl.endsWith('/') ? `${ollamaUrl}api/generate` : `${ollamaUrl}/api/generate`;
 
