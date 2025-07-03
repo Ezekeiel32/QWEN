@@ -146,6 +146,8 @@ Example: { "filePath": "src/components/ui/button.tsx", "changeDescription": "Add
 
 If the request is a general question, an analysis request, or involves multiple files, respond with a conversational, helpful answer in plain text. DO NOT use a JSON formatted response.
       `,
+        ollamaUrl: settings.ollamaUrl,
+        ollamaModel: settings.ollamaModel,
       };
       
       const analysisResponse = await analyzeCode(analysisInput);
@@ -172,6 +174,8 @@ If the request is a general question, an analysis request, or involves multiple 
           fileName: filePath,
           originalCode: originalFile.content,
           suggestedChanges: changeDescription,
+          ollamaUrl: settings.ollamaUrl,
+          ollamaModel: settings.ollamaModel,
         });
 
         const modifiedCode = applyResponse.updatedCode;

@@ -8,13 +8,14 @@
  * - ApplyCodeChangesOutput - The return type for the applyCodeChanges function.
  */
 
-import {ai} from '@/ai/genkit';
-import {z} from 'genkit';
+import {z} from 'zod';
 
 const ApplyCodeChangesInputSchema = z.object({
   fileName: z.string().describe('The name of the file to apply the changes to.'),
   originalCode: z.string().describe('The original code of the file.'),
   suggestedChanges: z.string().describe('The code changes suggested by the AI.'),
+  ollamaUrl: z.string().describe('The URL of the Ollama server.'),
+  ollamaModel: z.string().describe('The model to use on the Ollama server.'),
 });
 export type ApplyCodeChangesInput = z.infer<typeof ApplyCodeChangesInputSchema>;
 
@@ -24,34 +25,62 @@ const ApplyCodeChangesOutputSchema = z.object({
 export type ApplyCodeChangesOutput = z.infer<typeof ApplyCodeChangesOutputSchema>;
 
 export async function applyCodeChanges(input: ApplyCodeChangesInput): Promise<ApplyCodeChangesOutput> {
-  return applyCodeChangesFlow(input);
-}
+    const { fileName, originalCode, suggestedChanges, ollamaUrl, ollamaModel } = input;
+    
+    const prompt = `You are a code modification expert. Your task is to apply suggested changes to a given code file and return ONLY the complete, updated code for the file. Do not add any explanations, comments, or markdown formatting like \`\`\` around the code.
 
-const prompt = ai.definePrompt({
-  name: 'applyCodeChangesPrompt',
-  input: {schema: ApplyCodeChangesInputSchema},
-  output: {schema: ApplyCodeChangesOutputSchema},
-  prompt: `You are a code modification expert.
-
-You are given the original code and changes for it. You will apply these changes to the original code and return the updated version.
-
-Original Code:
-{{originalCode}}
+File to modify: ${fileName}
 
 Suggested Changes:
-{{suggestedChanges}}`,
-});
+${suggestedChanges}
 
-const applyCodeChangesFlow = ai.defineFlow(
-  {
-    name: 'applyCodeChangesFlow',
-    inputSchema: ApplyCodeChangesInputSchema,
-    outputSchema: ApplyCodeChangesOutputSchema,
-  },
-  async input => {
-    const {output} = await prompt(input);
-    return {
-      updatedCode: output!.updatedCode,
-    };
-  }
-);
+Original Code:
+---
+${originalCode}
+---
+
+Now, provide the full and complete code with the changes applied.`;
+
+    try {
+        if (!ollamaUrl || !ollamaModel) {
+            throw new Error("Ollama URL or model is not configured. Please check your settings.");
+        }
+        const finalUrl = ollamaUrl.endsWith('/') ? `${ollamaUrl}api/generate` : `${ollamaUrl}/api/generate`;
+
+        const response = await fetch(finalUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                model: ollamaModel,
+                prompt: prompt,
+                stream: false,
+            }),
+        });
+
+        if (!response.ok) {
+            const errorBody = await response.text();
+            throw new Error(`Ollama server responded with status ${response.status}: ${errorBody}`);
+        }
+
+        const data = await response.json();
+        
+        let updatedCode = data.response.trim();
+        
+        if (updatedCode.startsWith('```') && updatedCode.endsWith('```')) {
+            updatedCode = updatedCode.substring(updatedCode.indexOf('\n') + 1, updatedCode.lastIndexOf('\n')).trim();
+        }
+
+        return {
+            updatedCode: updatedCode,
+        };
+
+    } catch (error) {
+        console.error("Error calling Ollama service for code changes:", error);
+        if (error instanceof Error) {
+            throw new Error(`Failed to apply code changes with AI model: ${error.message}`);
+        }
+        throw new Error('An unknown error occurred while applying code changes.');
+    }
+}
