@@ -132,7 +132,7 @@ If the request is a general question, an analysis request, or involves multiple 
         const aiMessage: ChatMessage = {
           id: Date.now().toString(),
           role: 'ai',
-          content: \`I've prepared the following changes for \`${filePath}\` based on your request.\`,
+          content: "I've prepared the following changes for `" + filePath + "` based on your request.",
           codeChange: { filePath, originalCode: originalFile.content, modifiedCode },
         };
         setMessages(prev => [...prev, aiMessage]);
