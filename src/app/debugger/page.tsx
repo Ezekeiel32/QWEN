@@ -1,12 +1,12 @@
 "use client"
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { SendHorizonal, Bot, User, FileCode, Check, ChevronsUpDown, Search, X } from "lucide-react";
+import { SendHorizonal, Bot, User, FileCode, Check, ChevronsUpDown, Search, Folder, FolderOpen, Minus } from "lucide-react";
 import { CodeChangeCard } from "@/components/cards/CodeChangeCard";
 import type { ChatMessage, CodeFile, Repository } from "@/types";
 import { useAppContext } from "@/contexts/AppContext";
@@ -16,6 +16,66 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { analyzeCode } from "@/ai/flows/ai-debugger-chat";
 import { applyCodeChanges } from "@/ai/flows/apply-code-changes";
 import { useToast } from "@/hooks/use-toast";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+
+// Types for file tree
+interface FileTreeNode {
+  name: string;
+  type: 'folder' | 'file';
+  path: string;
+  children?: FileTree;
+  content?: string;
+}
+
+interface FileTree {
+  [key: string]: FileTreeNode;
+}
+
+// Helper to build the file tree
+const buildFileTree = (files: CodeFile[]): FileTree => {
+  const tree: FileTree = {};
+
+  files.forEach(file => {
+    const parts = file.path.split('/');
+    let currentLevel = tree;
+
+    parts.forEach((part, index) => {
+      if (index === parts.length - 1) {
+        currentLevel[part] = {
+          name: part,
+          type: 'file',
+          path: file.path,
+          content: file.content,
+        };
+      } else {
+        const folderPath = parts.slice(0, index + 1).join('/');
+        if (!currentLevel[part]) {
+          currentLevel[part] = {
+            name: part,
+            type: 'folder',
+            path: folderPath,
+            children: {},
+          };
+        }
+        currentLevel = currentLevel[part].children!;
+      }
+    });
+  });
+
+  return tree;
+};
+
+// Helper to get all file paths from a node
+const getFilesInNode = (node: FileTreeNode): string[] => {
+  if (node.type === 'file') {
+    return [node.path];
+  }
+  if (node.type === 'folder' && node.children) {
+    return Object.values(node.children).flatMap(child => getFilesInNode(child));
+  }
+  return [];
+};
 
 export default function DebuggerPage() {
   const { repositories, updateFileContent, addTask } = useAppContext();
@@ -31,6 +91,7 @@ export default function DebuggerPage() {
   const [selectedFilePaths, setSelectedFilePaths] = useState<Set<string>>(new Set());
   const [fileSearch, setFileSearch] = useState('');
   const [repoOpen, setRepoOpen] = useState(false);
+  const [openFolders, setOpenFolders] = useState<Set<string>>(new Set());
 
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
@@ -47,22 +108,11 @@ export default function DebuggerPage() {
     return repositories.find(repo => repo.id === selectedRepoId);
   }, [selectedRepoId, repositories]);
   
-  const filteredFiles = useMemo(() => {
-    if (!selectedRepo) return [];
-    return selectedRepo.files.filter(file => file.path.toLowerCase().includes(fileSearch.toLowerCase()));
+  const fileTree = useMemo(() => {
+    if (!selectedRepo) return {};
+    const files = selectedRepo.files.filter(file => file.path.toLowerCase().includes(fileSearch.toLowerCase()));
+    return buildFileTree(files);
   }, [selectedRepo, fileSearch]);
-  
-  const toggleFileSelection = (path: string) => {
-    setSelectedFilePaths(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(path)) {
-        newSet.delete(path);
-      } else {
-        newSet.add(path);
-      }
-      return newSet;
-    });
-  };
 
   const handleSend = async () => {
     if (!input.trim() || !selectedRepo) return;
@@ -80,26 +130,23 @@ export default function DebuggerPage() {
       const contextFiles = selectedRepo.files.filter(file => selectedFilePaths.has(file.path));
       const fileContents = contextFiles.map(file => `// FILE: ${file.path}\n\n${file.content}`);
 
-      const analysisInput = {
-        repositoryName: selectedRepo.name,
-        fileContents,
-        userQuestion: input,
-      };
-
       if (contextFiles.length === 0) {
         throw new Error("Please select at least one file for context before asking the AI.");
       }
 
-      // We'll add a specific instruction to the AI to try and return structured data for code changes.
-      analysisInput.userQuestion = `
+      const analysisInput = {
+        repositoryName: selectedRepo.name,
+        fileContents,
+        userQuestion: `
 Based on the provided file context, analyze the user's request: "${input}".
 
 If the request is a specific, actionable code modification for a SINGLE file within the context, respond with ONLY a JSON object string with the following structure:
 { "filePath": "path/to/the/file.ext", "changeDescription": "A concise description of the change to be made, for another AI to execute." }
 Example: { "filePath": "src/components/ui/button.tsx", "changeDescription": "Add a transition-colors and active:scale-95 effect to the button." }
 
-If the request is a general question, an analysis request, or involves multiple files, respond with a conversational, helpful answer in plain text. DO NOT use JSON.
-      `;
+If the request is a general question, an analysis request, or involves multiple files, respond with a conversational, helpful answer in plain text. DO NOT use a JSON formatted response.
+      `,
+      };
       
       const analysisResponse = await analyzeCode(analysisInput);
       const aiResponseText = analysisResponse.analysisResult;
@@ -108,8 +155,8 @@ If the request is a general question, an analysis request, or involves multiple 
       try {
         parsedResponse = JSON.parse(aiResponseText);
       } catch (e) {
-        // Not JSON, so it's a conversational response.
         setMessages(prev => [...prev, { id: Date.now().toString(), role: 'ai', content: aiResponseText }]);
+        setIsLoading(false);
         return;
       }
 
@@ -176,6 +223,111 @@ If the request is a general question, an analysis request, or involves multiple 
       description: `${filePath} has been updated in this session.`,
     });
   };
+  
+  const toggleFolder = (path: string) => {
+    setOpenFolders(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(path)) {
+        newSet.delete(path);
+      } else {
+        newSet.add(path);
+      }
+      return newSet;
+    });
+  };
+
+  const handleFileSelect = (path: string, isChecked: boolean) => {
+    setSelectedFilePaths(prev => {
+      const newSet = new Set(prev);
+      if (isChecked) {
+        newSet.add(path);
+      } else {
+        newSet.delete(path);
+      }
+      return newSet;
+    });
+  };
+
+  const handleFolderSelect = (node: FileTreeNode, isChecked: boolean) => {
+    const filesToChange = getFilesInNode(node);
+    setSelectedFilePaths(prev => {
+      const newSet = new Set(prev);
+      if (isChecked) {
+        filesToChange.forEach(file => newSet.add(file));
+      } else {
+        filesToChange.forEach(file => newSet.delete(file));
+      }
+      return newSet;
+    });
+  };
+
+  const handleSelectAll = () => {
+    if (!selectedRepo) return;
+    const allFilePaths = selectedRepo.files.map(f => f.path);
+    setSelectedFilePaths(new Set(allFilePaths));
+  };
+
+  const handleClearSelection = () => {
+    setSelectedFilePaths(new Set());
+  };
+
+  const RecursiveFileTree = useCallback(({ tree, level = 0 }: { tree: FileTree, level?: number }) => {
+    const sortedNodes = Object.values(tree).sort((a, b) => {
+      if (a.type === 'folder' && b.type === 'file') return -1;
+      if (a.type === 'file' && b.type === 'folder') return 1;
+      return a.name.localeCompare(b.name);
+    });
+  
+    return (
+      <div className={level > 0 ? "pl-4" : ""}>
+        {sortedNodes.map(node => {
+          if (node.type === 'folder') {
+            const allChildFiles = getFilesInNode(node);
+            const selectedChildFiles = allChildFiles.filter(path => selectedFilePaths.has(path));
+            const isChecked = selectedChildFiles.length > 0 && selectedChildFiles.length === allChildFiles.length;
+            const isIndeterminate = selectedChildFiles.length > 0 && selectedChildFiles.length < allChildFiles.length;
+            const checkboxState = isChecked ? true : isIndeterminate ? 'indeterminate' : false;
+  
+            return (
+              <Collapsible key={node.path} open={openFolders.has(node.path)} onOpenChange={() => toggleFolder(node.path)}>
+                <div className="flex items-center space-x-2 text-sm p-1 rounded-md hover:bg-accent/50">
+                  <Checkbox
+                    id={`folder-${node.path}`}
+                    checked={checkboxState}
+                    onCheckedChange={(checked) => handleFolderSelect(node, !!checked)}
+                    aria-label={`Select folder ${node.name}`}
+                  />
+                  <CollapsibleTrigger className="flex items-center space-x-2 flex-grow text-left">
+                    {openFolders.has(node.path) ? <FolderOpen className="h-4 w-4" /> : <Folder className="h-4 w-4" />}
+                    <span className="truncate">{node.name}</span>
+                  </CollapsibleTrigger>
+                </div>
+                <CollapsibleContent>
+                  {node.children && <RecursiveFileTree tree={node.children} level={level + 1} />}
+                </CollapsibleContent>
+              </Collapsible>
+            );
+          } else { // file
+            return (
+              <div key={node.path} className="flex items-center space-x-2 text-sm p-1 rounded-md hover:bg-accent/50">
+                <Checkbox
+                  id={`file-${node.path}`}
+                  checked={selectedFilePaths.has(node.path)}
+                  onCheckedChange={(checked) => handleFileSelect(node.path, !!checked)}
+                  aria-label={`Select file ${node.name}`}
+                />
+                <label htmlFor={`file-${node.path}`} className="flex items-center space-x-2 flex-grow cursor-pointer">
+                    <FileCode className="h-4 w-4 text-muted-foreground" />
+                    <span className="truncate">{node.name}</span>
+                </label>
+              </div>
+            );
+          }
+        })}
+      </div>
+    );
+  }, [openFolders, selectedFilePaths]);
+
 
   return (
     <div className="h-[calc(100vh-8rem)] flex flex-col">
@@ -224,24 +376,19 @@ If the request is a general question, an analysis request, or involves multiple 
           <Card className="flex-grow flex flex-col">
             <CardHeader>
               <CardTitle className="text-base">File Explorer</CardTitle>
-              <div className="relative">
+               <div className="relative">
                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground"/>
                 <Input placeholder="Search files..." value={fileSearch} onChange={(e) => setFileSearch(e.target.value)} className="pl-8"/>
+              </div>
+              <div className="flex gap-2 pt-2">
+                <Button size="sm" variant="outline" onClick={handleSelectAll} disabled={!selectedRepo}>Select All</Button>
+                <Button size="sm" variant="outline" onClick={handleClearSelection} disabled={selectedFilePaths.size === 0}>Clear Selection</Button>
               </div>
             </CardHeader>
             <CardContent className="flex-grow overflow-hidden">
               <ScrollArea className="h-full">
-                <div className="space-y-1 pr-4">
-                  {selectedRepo ? filteredFiles.map(file => (
-                     <div 
-                      key={file.path} 
-                      onClick={() => toggleFileSelection(file.path)}
-                      className={`flex items-center space-x-2 text-sm p-2 rounded-md hover:bg-accent cursor-pointer ${selectedFilePaths.has(file.path) ? 'bg-accent/50' : ''}`}
-                    >
-                        <FileCode className="h-4 w-4 text-muted-foreground" />
-                        <span className="truncate">{file.path}</span>
-                      </div>
-                  )) : <p className="text-sm text-muted-foreground text-center py-8">Select a repository to see files.</p>}
+                <div className="space-y-1 pr-2">
+                  {selectedRepo ? <RecursiveFileTree tree={fileTree} /> : <p className="text-sm text-muted-foreground text-center py-8">Select a repository to see files.</p>}
                 </div>
               </ScrollArea>
             </CardContent>
