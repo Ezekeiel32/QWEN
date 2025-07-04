@@ -156,15 +156,7 @@ export default function DebuggerPage() {
       const analysisInput = {
         repositoryName: selectedRepo.name,
         fileContents,
-        userQuestion: `
-Based on the provided file context, analyze the user's request: "${input}".
-
-If the request is a specific, actionable code modification for a SINGLE file within the context, respond with ONLY a JSON object string with the following structure:
-{ "filePath": "path/to/the/file.ext", "changeDescription": "A concise description of the change to be made, for another AI to execute." }
-Example: { "filePath": "src/components/ui/button.tsx", "changeDescription": "Add a transition-colors and active:scale-95 effect to the button." }
-
-If the request is a general question, an analysis request, or involves multiple files, respond with a conversational, helpful answer in plain text. DO NOT use a JSON formatted response.
-      `,
+        userQuestion: input,
         ollamaUrl: settings.ollamaUrl,
         ollamaModel: settings.ollamaModel,
       };

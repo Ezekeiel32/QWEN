@@ -27,13 +27,21 @@ export type AnalyzeCodeOutput = z.infer<typeof AnalyzeCodeOutputSchema>;
 export async function analyzeCode(input: AnalyzeCodeInput): Promise<AnalyzeCodeOutput> {
   const { repositoryName, fileContents, userQuestion, ollamaUrl, ollamaModel } = input;
 
-  const prompt = `You are an AI code analysis assistant. You are analyzing the code in the following repository: ${repositoryName}.
+  const prompt = `You are an AI code analysis assistant for a repository named "${repositoryName}".
+You have been given the content of several files as context. Based on this context, analyze the user's request.
 
-Here are the contents of the files in the repository:
+USER REQUEST: "${userQuestion}"
 
-${fileContents.map(content => `-- File --\n${content}`).join('\n\n')}
+If the user's request is a specific, actionable code modification for a SINGLE file provided in the context, respond with ONLY a JSON object string with the following structure, and nothing else:
+{ "filePath": "path/to/the/file.ext", "changeDescription": "A concise description of the change to be made, for another AI to execute." }
+Example: { "filePath": "src/components/ui/button.tsx", "changeDescription": "Add a transition-colors and active:scale-95 effect to the button." }
 
-User question: ${userQuestion}`;
+If the request is a general question, an analysis request, or involves multiple files, respond with a conversational, helpful answer in plain text. DO NOT use JSON format for this.
+
+Here are the contents of the files for context:
+---
+${fileContents.join('\n\n---\n')}
+---`;
 
   try {
     if (!ollamaUrl) {
