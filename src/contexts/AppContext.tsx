@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
@@ -19,7 +20,6 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 const DEFAULT_DEBUGGER_STATE: DebuggerState = {
   selectedRepoId: null,
   messages: [],
-  selectedFilePaths: [],
   openFolders: [],
 };
 

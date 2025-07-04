@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { SendHorizonal, Bot, User, FileCode, Check, ChevronsUpDown, Search, Folder, FolderOpen, Cog, FileText } from "lucide-react";
+import { SendHorizonal, Bot, User, Check, ChevronsUpDown, Search, Folder, FolderOpen, Cog, FileText } from "lucide-react";
 import type { ChatMessage, Repository } from "@/types";
 import { useAppContext } from "@/contexts/AppContext";
 import { useSettings } from "@/hooks/use-settings";
@@ -89,7 +89,6 @@ export default function DebuggerPage() {
        setDebuggerState({
         selectedRepoId: repoIdFromParams,
         messages: [],
-        selectedFilePaths: [],
         openFolders: [],
       });
     } else if (!selectedRepoId && repositories.length > 0) {
@@ -310,7 +309,6 @@ export default function DebuggerPage() {
                                 setDebuggerState({
                                   selectedRepoId: repo.id,
                                   messages: [],
-                                  selectedFilePaths: [],
                                   openFolders: [],
                                 });
                             }

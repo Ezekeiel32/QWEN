@@ -1,3 +1,4 @@
+
 export interface Repository {
   id: string;
   name: string;
@@ -34,6 +35,5 @@ export interface ChatMessage {
 export interface DebuggerState {
   selectedRepoId: string | null;
   messages: ChatMessage[];
-  selectedFilePaths: string[]; // Stored as array for JSON compatibility
-  openFolders: string[]; // Stored as array for JSON compatibility
+  openFolders: string[];
 }
