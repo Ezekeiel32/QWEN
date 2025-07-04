@@ -58,18 +58,20 @@ ${fileContents.join('\n\n---\n')}
         throw new Error("Ollama Model is not configured. Please set it in the Settings page.");
     }
 
-    const finalUrl = `${ollamaUrl.replace(/\/$/, '')}/api/generate`;
-
-    const response = await fetch(finalUrl, {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/ollama`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'ngrok-skip-browser-warning': 'true'
       },
       body: JSON.stringify({
-        model: ollamaModel,
-        prompt: prompt,
-        stream: false,
+        ollamaUrl,
+        path: 'api/generate',
+        method: 'POST',
+        body: {
+          model: ollamaModel,
+          prompt,
+          stream: false,
+        },
       }),
     });
 

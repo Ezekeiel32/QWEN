@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { AlertCircle, CheckCircle, HelpCircle, Loader2, Server, Key, Github } from 'lucide-react';
+import { AlertCircle, CheckCircle, HelpCircle, Loader2, Server, Key } from 'lucide-react';
 import { useSettings } from '@/hooks/use-settings';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { testOllamaConnection } from '@/lib/ollama';
@@ -145,25 +145,16 @@ export default function SettingsPage() {
         <AlertCircle className="h-4 w-4" />
         <AlertTitle>Running Ollama with Global Access</AlertTitle>
         <AlertDescription className="space-y-2 mt-2">
-            <p>To access your local Ollama server from this web app, you need to expose it to the internet and configure its CORS policy. We recommend using <a href="https://ngrok.com/" target="_blank" rel="noopener noreferrer" className="underline font-semibold">ngrok</a>.</p>
+            <p>To access your local Ollama server from this web app, you need to expose it to the internet. We recommend using <a href="https://ngrok.com/" target="_blank" rel="noopener noreferrer" className="underline font-semibold">ngrok</a>.</p>
             
-            <h3 className="font-semibold pt-2">Method 1: Simple (Recommended for most users)</h3>
             <ol className="list-decimal list-inside space-y-1 text-xs pl-2">
-                <li>Make sure Ollama is running on your machine. You can start it from your terminal with the correct CORS settings: <code className="bg-muted px-1 py-0.5 rounded">OLLAMA_ORIGINS='*' ollama serve</code>. Note the port (usually 11434).</li>
-                <li>In a separate terminal, start ngrok to create a public URL: <code className="bg-muted px-1 py-0.5 rounded">ngrok http 11434</code>.</li>
+                <li>Make sure your local Ollama server is running. You can start it from your terminal with: <code className="bg-muted px-1 py-0.5 rounded">ollama serve</code>. Note the port (usually 11434).</li>
+                <li>In a separate terminal, start ngrok to create a public URL for your Ollama port: <code className="bg-muted px-1 py-0.5 rounded">ngrok http 11434</code>.</li>
                 <li>Copy the HTTPS forwarding URL from the ngrok output (e.g., <code className="bg-muted px-1 py-0.5 rounded">https://....ngrok-free.app</code>).</li>
-                <li>Paste this ngrok URL into the "Ollama Server URL" field above.</li>
+                <li>Paste this ngrok URL into the "Ollama Server URL" field above and save.</li>
                 <li className="pt-1">
-                    <span className="font-semibold">Important:</span> The first time you use your ngrok URL, you may see a warning page from ngrok. You must visit the URL in your browser and click "Visit Site" on that page to authorize access before the connection test will work.
+                    <span className="font-semibold">Important:</span> The first time you use your ngrok URL, you may see a warning page from ngrok. You must visit the URL in your browser and click "Visit Site" on that page to authorize access before the connection test will work. This app's internal proxy will handle CORS issues.
                 </li>
-            </ol>
-
-            <h3 className="font-semibold pt-2">Method 2: Advanced (Using an Nginx Reverse Proxy)</h3>
-             <ol className="list-decimal list-inside space-y-1 text-xs pl-2">
-                <li>Start your local Ollama server normally: <code className="bg-muted px-1 py-0.5 rounded">ollama serve</code>.</li>
-                <li>Set up an Nginx site configuration to act as a reverse proxy that adds the necessary CORS headers. Listen on a custom port (e.g., 11500) and proxy requests to Ollama's port (11434).</li>
-                <li>In a separate terminal, point ngrok to your Nginx port: <code className="bg-muted px-1 py-0.5 rounded">ngrok http 11500</code>.</li>
-                <li>Paste the ngrok URL into the "Ollama Server URL" field above and save.</li>
             </ol>
         </AlertDescription>
       </Alert>

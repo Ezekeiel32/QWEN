@@ -12,21 +12,16 @@ export async function testOllamaConnection(url: string): Promise<ConnectionResul
         };
     }
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
-
     try {
-        const finalUrl = `${url.replace(/\/$/, '')}/api/tags`;
-
-        const response = await fetch(finalUrl, {
-            method: 'GET',
-            signal: controller.signal,
-            headers: {
-                'ngrok-skip-browser-warning': 'true'
-            }
+        const response = await fetch('/api/ollama', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                ollamaUrl: url,
+                path: 'api/tags',
+                method: 'GET',
+            }),
         });
-
-        clearTimeout(timeoutId);
 
         if (response.ok) {
             const data = await response.json();
@@ -39,28 +34,21 @@ export async function testOllamaConnection(url: string): Promise<ConnectionResul
         } else {
             const errorText = await response.text();
             let message = `Server responded with status ${response.status}. Message: ${errorText || response.statusText}.`;
-
-            if(errorText.includes('ngrok-skip-browser-warning') || errorText.includes('ERR_NGROK_')) {
-                message = "Connection blocked by ngrok. Please visit your ngrok URL in a new browser tab and click 'Visit Site' to authorize access, then try again."
-            } else if (response.status === 404) {
+             if (response.status === 404) {
                  message = `Server responded with 404 Not Found. Please ensure your Ollama URL is correct and the server is running.`
-            }
+             } else if (errorText.includes('ngrok-skip-browser-warning') || errorText.includes('ERR_NGROK_')) {
+                message = "Connection blocked by ngrok. Please visit your ngrok URL in a new browser tab and click 'Visit Site' to authorize access, then try again."
+             }
             return {
                 status: 'error',
                 message: message,
             };
         }
     } catch (error) {
-        clearTimeout(timeoutId);
-        if (error instanceof DOMException && error.name === 'AbortError') {
-            return {
-                status: 'error',
-                message: 'Connection timed out after 10 seconds. Check if the server URL is correct, reachable, and not blocked by a firewall.',
-            };
-        }
+        console.error('Connection test error:', error);
         return {
             status: 'error',
-            message: `A network error occurred. This is often a CORS issue. For global access, ensure your server is configured to handle CORS requests correctly (e.g., via OLLAMA_ORIGINS='*' or an Nginx proxy). Error: ${error instanceof Error ? error.message : String(error)}`,
+            message: `An unexpected error occurred while testing the connection. Error: ${error instanceof Error ? error.message : String(error)}`,
         };
     }
 }
