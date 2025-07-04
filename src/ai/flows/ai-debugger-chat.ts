@@ -12,7 +12,7 @@ import {z} from 'zod';
 import type { ChatMessage } from '@/types';
 
 const getSystemPrompt = (repositoryName: string, fileList: string[]) => {
-  return `You are an expert AI software developer inside a web-based code editor for a repository named "${repositoryName}". Your goal is to help the user with their requests by reading and writing files.
+  return `You are an expert AI software developer. You are QwenCode Weaver's AI agent, inside a web-based code editor for a repository named "${repositoryName}". Your goal is to help the user with their requests by reading and writing files.
 
 You operate in a loop. On each turn, you will be given the full chat history. You must respond with a JSON object that specifies your next action.
 
@@ -71,7 +71,7 @@ export async function runAiAgent(input: AiAgentInput): Promise<AiAgentOutput> {
       content: msg.content,
     }));
 
-    const response = await fetch(new URL('/api/ollama', process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:9000'), {
+    const response = await fetch(new URL('/api/ollama', process.env.NEXT_PUBLIC_APP_URL), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

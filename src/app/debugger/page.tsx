@@ -365,7 +365,7 @@ export default function DebuggerPage() {
                       : message.role === 'system' ? 'bg-muted/60 text-muted-foreground italic' 
                       : 'bg-secondary'}`
                     }>
-                      <pre className="text-sm whitespace-pre-wrap font-sans">{message.content}</pre>
+                      <div className="text-sm whitespace-pre-wrap font-sans">{message.content}</div>
                     </div>
 
                     {message.role === 'user' && <div className="p-2 rounded-full bg-secondary"><User className="w-5 h-5" /></div>}
