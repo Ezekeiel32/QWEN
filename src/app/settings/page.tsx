@@ -143,7 +143,7 @@ export default function SettingsPage() {
 
       <Alert>
         <AlertCircle className="h-4 w-4" />
-        <AlertTitle>Running Ollama with Global Access</AlertTitle>
+        <AlertTitle>Connecting to Your Local AI Model</AlertTitle>
         <AlertDescription className="space-y-2 mt-2">
             <p>To access your local Ollama server from this web app, you need to expose it to the internet. We recommend using <a href="https://ngrok.com/" target="_blank" rel="noopener noreferrer" className="underline font-semibold">ngrok</a>.</p>
             
@@ -153,7 +153,10 @@ export default function SettingsPage() {
                 <li>Copy the HTTPS forwarding URL from the ngrok output (e.g., <code className="bg-muted px-1 py-0.5 rounded">https://....ngrok-free.app</code>).</li>
                 <li>Paste this ngrok URL into the "Ollama Server URL" field above and save.</li>
                 <li className="pt-1">
-                    <span className="font-semibold">Important:</span> The first time you use your ngrok URL, you may see a warning page from ngrok. You must visit the URL in your browser and click "Visit Site" on that page to authorize access before the connection test will work. This app's internal proxy will handle CORS issues.
+                    <span className="font-semibold">Important:</span> To avoid connection errors, this app automatically adds the <code className="bg-muted px-1 py-0.5 rounded">ngrok-skip-browser-warning</code> header to requests. If you still have trouble, you may need to visit your ngrok URL in your browser and click "Visit Site" to authorize access.
+                </li>
+                 <li className="pt-1">
+                    <span className="font-semibold">For advanced users with CORS issues:</span> If you are not using ngrok or are still seeing CORS errors, you may need to configure your Ollama server to accept requests from this app's origin by setting the <code className="bg-muted px-1 py-0.5 rounded">OLLAMA_ORIGINS</code> environment variable.
                 </li>
             </ol>
         </AlertDescription>

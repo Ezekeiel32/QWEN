@@ -13,14 +13,13 @@ export async function testOllamaConnection(url: string): Promise<ConnectionResul
     }
 
     try {
-        const response = await fetch('/api/ollama', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                ollamaUrl: url,
-                path: 'api/tags',
-                method: 'GET',
-            }),
+        const finalUrl = `${url.replace(/\/$/, '')}/api/tags`;
+        const response = await fetch(finalUrl, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+                'ngrok-skip-browser-warning': 'true',
+            },
         });
 
         if (response.ok) {
@@ -46,9 +45,13 @@ export async function testOllamaConnection(url: string): Promise<ConnectionResul
         }
     } catch (error) {
         console.error('Connection test error:', error);
+        let message = `An unexpected error occurred: ${error instanceof Error ? error.message : String(error)}`;
+        if (error instanceof TypeError && error.message.toLowerCase().includes('failed to fetch')) {
+          message = "A network error occurred. This is often a CORS issue. For global access, ensure your server is configured to handle CORS requests correctly (e.g., via OLLAMA_ORIGINS='*' or an Nginx proxy). Error: Failed to fetch"
+        }
         return {
             status: 'error',
-            message: `An unexpected error occurred while testing the connection. Error: ${error instanceof Error ? error.message : String(error)}`,
+            message: message,
         };
     }
 }
