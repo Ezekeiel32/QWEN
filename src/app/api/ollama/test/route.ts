@@ -22,7 +22,8 @@ export async function POST(request: Request) {
 
         try {
             // This request is made from the Next.js server, so CORS is not an issue.
-            const finalUrl = url.endsWith('/') ? `${url}api/tags` : `${url}/api/tags`;
+            const trimmedUrl = url.trim();
+            const finalUrl = trimmedUrl.endsWith('/') ? `${trimmedUrl}api/tags` : `${trimmedUrl}/api/tags`;
             
             const response = await fetch(finalUrl, {
                 method: 'GET',

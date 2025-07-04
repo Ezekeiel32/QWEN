@@ -48,7 +48,9 @@ Now, provide the full and complete code with the changes applied.`;
         if (!ollamaModel) {
             throw new Error("Ollama Model is not configured. Please set it in the Settings page.");
         }
-        const finalUrl = ollamaUrl.endsWith('/') ? `${ollamaUrl}api/generate` : `${ollamaUrl}/api/generate`;
+        
+        const trimmedUrl = ollamaUrl.trim();
+        const finalUrl = trimmedUrl.endsWith('/') ? `${trimmedUrl}api/generate` : `${trimmedUrl}/api/generate`;
 
         const response = await fetch(finalUrl, {
             method: 'POST',
