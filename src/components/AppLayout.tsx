@@ -1,3 +1,4 @@
+
 "use client"
 import { SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarFooter, SidebarTrigger, SidebarInset } from "@/components/ui/sidebar";
 import { LayoutGrid, Github, TerminalSquare, ListChecks, Settings, CodeXml } from 'lucide-react';
@@ -29,7 +30,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         <SidebarHeader>
           <div className="flex items-center gap-2 p-2">
             <CodeXml className="w-8 h-8 text-primary" />
-            <h1 className="text-xl font-bold font-headline">QwenCode</h1>
+            <h1 className="text-xl font-bold font-headline">QwenCode Weaver</h1>
           </div>
         </SidebarHeader>
         <SidebarContent>

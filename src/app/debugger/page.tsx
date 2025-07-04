@@ -1,13 +1,13 @@
+
 "use client"
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
-import Link from 'next/link';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { SendHorizonal, Bot, User, FileCode, Check, ChevronsUpDown, Search, Folder, FolderOpen, Cog } from "lucide-react";
+import { SendHorizonal, Bot, User, FileCode, Check, ChevronsUpDown, Search, Folder, FolderOpen, Cog, FileText } from "lucide-react";
 import type { ChatMessage, Repository } from "@/types";
 import { useAppContext } from "@/contexts/AppContext";
 import { useSettings } from "@/hooks/use-settings";
@@ -15,7 +15,6 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { runAiAgent } from "@/ai/flows/ai-debugger-chat";
 import { useToast } from "@/hooks/use-toast";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import type { CodeFile } from "@/types";
 
@@ -66,16 +65,6 @@ const buildFileTree = (files: CodeFile[]): FileTree => {
   return tree;
 };
 
-// Helper to get all file paths from a node
-const getFilesInNode = (node: FileTreeNode): string[] => {
-  if (node.type === 'file') {
-    return [node.path];
-  }
-  if (node.type === 'folder' && node.children) {
-    return Object.values(node.children).flatMap(child => getFilesInNode(child));
-  }
-  return [];
-};
 
 export default function DebuggerPage() {
   const { repositories, updateFileContent, addTask, debuggerState, setDebuggerState } = useAppContext();
@@ -90,7 +79,6 @@ export default function DebuggerPage() {
   const [fileSearch, setFileSearch] = useState('');
   const [repoOpen, setRepoOpen] = useState(false);
 
-  const selectedFilePaths = useMemo(() => new Set(debuggerState.selectedFilePaths), [debuggerState.selectedFilePaths]);
   const openFolders = useMemo(() => new Set(debuggerState.openFolders), [debuggerState.openFolders]);
 
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -119,23 +107,15 @@ export default function DebuggerPage() {
     return buildFileTree(files);
   }, [selectedRepo, fileSearch]);
   
-  const handleSystemMessage = (content: string) => {
-    const systemMessage: ChatMessage = {
-      id: Date.now().toString(),
-      role: 'system',
-      content,
-    };
-    setDebuggerState({ messages: [...messages, systemMessage] });
-    return [...messages, systemMessage];
-  };
-
-  const handleAiMessage = (content: string) => {
+  const handleAiMessage = (content: string, currentMessages: ChatMessage[]) => {
     const aiMessage: ChatMessage = {
       id: Date.now().toString(),
       role: 'ai',
       content,
     };
-    setDebuggerState({ messages: [...messages, aiMessage] });
+    const updatedMessages = [...currentMessages, aiMessage];
+    setDebuggerState({ messages: updatedMessages });
+    return updatedMessages;
   }
 
   const handleSend = async () => {
@@ -170,16 +150,19 @@ export default function DebuggerPage() {
         const agentResponse = await runAiAgent(agentInput);
         let action;
         try {
-          action = JSON.parse(agentResponse.response);
+          // The response might have markdown ```json ... ``` wrapper
+          const jsonResponse = agentResponse.response.trim().replace(/^```json\n?/, '').replace(/\n?```$/, '');
+          action = JSON.parse(jsonResponse);
         } catch (e) {
-          handleAiMessage("The AI returned an invalid response. Please try again.");
+          const errorMessage = "The AI returned an invalid response. Please try again.";
+          currentMessages = handleAiMessage(errorMessage, currentMessages);
           break;
         }
 
         if (action.action === 'readFile') {
           const file = selectedRepo.files.find(f => f.path === action.path);
           const messageContent = file
-            ? `File content for \`${action.path}\`:\n\n\`\`\`\n${file.content}\n\`\`\``
+            ? `I have read the file \`${action.path}\` for you. Here is the content:\n\n\`\`\`\n${file.content}\n\`\`\``
             : `Error: File \`${action.path}\` not found.`;
           
           const systemMessage: ChatMessage = { id: Date.now().toString(), role: 'system', content: messageContent };
@@ -217,24 +200,24 @@ export default function DebuggerPage() {
           continue;
 
         } else if (action.action === 'finish') {
-          handleAiMessage(action.message);
+          currentMessages = handleAiMessage(action.message, currentMessages);
           break; // End of loop
         
         } else {
-          handleAiMessage("The AI returned an unknown action. Please try again.");
+          currentMessages = handleAiMessage("The AI returned an unknown action. Please try again.", currentMessages);
           break;
         }
       }
 
       if (turn >= MAX_TURNS) {
-        handleAiMessage("The AI took too many steps to complete the request. Please try again with a more specific prompt.");
+        handleAiMessage("The AI took too many steps to complete the request. Please try again with a more specific prompt.", currentMessages);
       }
 
     } catch (error) {
       console.error("AI Agent Error:", error);
       const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
       toast({ variant: "destructive", title: "AI Error", description: errorMessage });
-      handleAiMessage(`I encountered an error: ${errorMessage}`);
+      handleAiMessage(`I encountered an error: ${errorMessage}`, currentMessages);
     } finally {
       setIsLoading(false);
     }
@@ -259,37 +242,6 @@ export default function DebuggerPage() {
     setDebuggerState({ openFolders: Array.from(newSet) });
   };
 
-  const handleFileSelect = (path: string, isChecked: boolean) => {
-    const newSet = new Set(debuggerState.selectedFilePaths);
-    if (isChecked) {
-      newSet.add(path);
-    } else {
-      newSet.delete(path);
-    }
-    setDebuggerState({ selectedFilePaths: Array.from(newSet) });
-  };
-
-  const handleFolderSelect = (node: FileTreeNode, isChecked: boolean) => {
-    const filesToChange = getFilesInNode(node);
-    const newSet = new Set(debuggerState.selectedFilePaths);
-    if (isChecked) {
-      filesToChange.forEach(file => newSet.add(file));
-    } else {
-      filesToChange.forEach(file => newSet.delete(file));
-    }
-    setDebuggerState({ selectedFilePaths: Array.from(newSet) });
-  };
-
-  const handleSelectAll = () => {
-    if (!selectedRepo) return;
-    const allFilePaths = selectedRepo.files.map(f => f.path);
-    setDebuggerState({ selectedFilePaths: allFilePaths });
-  };
-
-  const handleClearSelection = () => {
-    setDebuggerState({ selectedFilePaths: [] });
-  };
-
   const RecursiveFileTree = useCallback(({ tree, level = 0 }: { tree: FileTree, level?: number }) => {
     const sortedNodes = Object.values(tree).sort((a, b) => {
       if (a.type === 'folder' && b.type === 'file') return -1;
@@ -301,26 +253,12 @@ export default function DebuggerPage() {
       <div className={level > 0 ? "pl-4" : ""}>
         {sortedNodes.map(node => {
           if (node.type === 'folder') {
-            const allChildFiles = getFilesInNode(node);
-            const selectedChildFiles = allChildFiles.filter(path => selectedFilePaths.has(path));
-            const isChecked = allChildFiles.length > 0 && selectedChildFiles.length === allChildFiles.length;
-            const isIndeterminate = selectedChildFiles.length > 0 && selectedChildFiles.length < allChildFiles.length;
-            const checkboxState = isChecked ? true : isIndeterminate ? 'indeterminate' : false;
-  
             return (
               <Collapsible key={node.path} open={openFolders.has(node.path)} onOpenChange={() => toggleFolder(node.path)}>
-                <div className="flex items-center space-x-2 text-sm p-1 rounded-md hover:bg-accent/50">
-                  <Checkbox
-                    id={`folder-${node.path}`}
-                    checked={checkboxState}
-                    onCheckedChange={(checked) => handleFolderSelect(node, !!checked)}
-                    aria-label={`Select folder ${node.name}`}
-                  />
-                  <CollapsibleTrigger className="flex items-center space-x-2 flex-grow text-left">
-                    {openFolders.has(node.path) ? <FolderOpen className="h-4 w-4" /> : <Folder className="h-4 w-4" />}
-                    <span className="truncate">{node.name}</span>
-                  </CollapsibleTrigger>
-                </div>
+                <CollapsibleTrigger className="flex items-center space-x-2 text-sm p-1 rounded-md hover:bg-accent/50 w-full">
+                  {openFolders.has(node.path) ? <FolderOpen className="h-4 w-4" /> : <Folder className="h-4 w-4" />}
+                  <span className="truncate">{node.name}</span>
+                </CollapsibleTrigger>
                 <CollapsibleContent>
                   {node.children && <RecursiveFileTree tree={node.children} level={level + 1} />}
                 </CollapsibleContent>
@@ -328,24 +266,16 @@ export default function DebuggerPage() {
             );
           } else { // file
             return (
-              <div key={node.path} className="flex items-center space-x-2 text-sm p-1 rounded-md hover:bg-accent/50">
-                <Checkbox
-                  id={`file-${node.path}`}
-                  checked={selectedFilePaths.has(node.path)}
-                  onCheckedChange={(checked) => handleFileSelect(node.path, !!checked)}
-                  aria-label={`Select file ${node.name}`}
-                />
-                <label htmlFor={`file-${node.path}`} className="flex items-center space-x-2 flex-grow cursor-pointer">
-                    <FileCode className="h-4 w-4 text-muted-foreground" />
-                    <span className="truncate">{node.name}</span>
-                </label>
+              <div key={node.path} className="flex items-center space-x-2 text-sm p-1 rounded-md">
+                <FileText className="h-4 w-4 text-muted-foreground" />
+                <span className="truncate">{node.name}</span>
               </div>
             );
           }
         })}
       </div>
     );
-  }, [openFolders, selectedFilePaths, toggleFolder, handleFolderSelect, handleFileSelect]);
+  }, [openFolders, toggleFolder]);
 
 
   return (
@@ -358,7 +288,7 @@ export default function DebuggerPage() {
               <CardTitle className="text-lg">Codebase Context</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-sm text-muted-foreground mb-4">Select a repository to start debugging.</p>
+              <p className="text-sm text-muted-foreground mb-4">Select a repository to start the agent.</p>
               <Popover open={repoOpen} onOpenChange={setRepoOpen}>
                 <PopoverTrigger asChild>
                   <Button variant="outline" role="combobox" aria-expanded={repoOpen} className="w-full justify-between">
@@ -437,7 +367,7 @@ export default function DebuggerPage() {
                       : message.role === 'system' ? 'bg-muted/60 text-muted-foreground italic' 
                       : 'bg-secondary'}`
                     }>
-                      <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                      <pre className="text-sm whitespace-pre-wrap font-sans">{message.content}</pre>
                     </div>
 
                     {message.role === 'user' && <div className="p-2 rounded-full bg-secondary"><User className="w-5 h-5" /></div>}

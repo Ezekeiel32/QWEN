@@ -1,3 +1,4 @@
+
 import type { Repository, CodeFile } from '@/types';
 
 function safeAtob(b64: string): string {
@@ -16,14 +17,31 @@ function safeAtob(b64: string): string {
 }
 
 const textFileExtensions = new Set([
-  '.js', '.jsx', '.ts', '.tsx', '.json', '.md', '.html', '.css', '.scss', '.less', '.sass',
-  '.py', '.rb', '.java', '.c', '.cpp', '.h', '.hpp', '.cs', '.go', '.php', '.rs', '.swift',
-  '.kt', '.kts', '.dart', '.vue', '.svelte', '.yml', '.yaml', '.toml', '.sh', 
-  '.ps1', '.bat', '.txt', '.xml', '.config', '.properties', '.gitignore', '.dockerfile',
-  'Dockerfile', '.env', '.mod', 'go.mod', 'go.sum', '.sql', '.rb', '.erb'
+  // Web development
+  '.html', '.htm', '.css', '.scss', '.less', '.sass', '.js', '.mjs', '.cjs', '.jsx', '.ts', '.tsx', '.json', '.xml', '.svg',
+  // Configuration
+  '.yml', '.yaml', '.toml', '.ini', '.cfg', '.conf', '.env', 'Dockerfile', '.dockerignore', '.gitignore', '.gitattributes',
+  // Scripts
+  '.sh', '.bash', '.ps1', '.bat', '.cmd',
+  // Documents
+  '.md', '.markdown', '.txt', '.rst',
+  // Source code
+  '.py', '.rb', '.java', '.c', '.cpp', '.h', '.hpp', '.cs', '.go', '.php', '.rs', '.swift', '.kt', '.kts', '.dart', '.lua', '.pl', '.pm', '.t',
+  // SQL
+  '.sql',
+  // Ruby on Rails
+  '.erb', 'Gemfile', 'Gemfile.lock',
+  // Go
+  'go.mod', 'go.sum',
+  // Vue
+  '.vue',
+  // Svelte
+  '.svelte',
+  // Other project files
+  'Makefile', 'README'
 ]);
 
-const ignoredDirs = new Set(['node_modules', '.git', 'dist', 'build', 'out', 'coverage', '.next', '.vscode', 'vendor', '.idea', 'target', 'bin', 'obj']);
+const ignoredDirs = new Set(['node_modules', '.git', 'dist', 'build', 'out', 'coverage', '.next', '.vscode', 'vendor', '.idea', 'target', 'bin', 'obj', 'tmp', '.cache']);
 const ignoredFiles = new Set(['package-lock.json', 'yarn.lock', 'pnpm-lock.yaml']);
 
 export async function importGithubRepo(url: string, githubPat: string, onProgress: (message: string) => void): Promise<Repository> {
