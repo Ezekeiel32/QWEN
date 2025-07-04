@@ -79,7 +79,7 @@ export default function SettingsPage() {
                 value={ollamaUrl}
                 onChange={(e) => setOllamaUrl(e.target.value)}
                 />
-                <Button onClick={handleTestConnection} disabled={testStatus === 'testing'} variant="outline">
+                <Button onClick={handleTestConnection} disabled={testStatus === 'testing' || !ollamaUrl.trim()} variant="outline">
                     {testStatus === 'testing' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Server className="mr-2 h-4 w-4" />}
                     Test Connection
                 </Button>
@@ -143,49 +143,21 @@ export default function SettingsPage() {
 
       <Alert>
         <AlertCircle className="h-4 w-4" />
-        <AlertTitle>Global Access & CORS Configuration</AlertTitle>
+        <AlertTitle>Running Ollama with Global Access</AlertTitle>
         <AlertDescription className="space-y-2 mt-2">
-            <p>To prevent browser errors, your Ollama server must send the correct Cross-Origin Resource Sharing (CORS) headers. Here are two common ways to set this up.</p>
-
-            <h3 className="font-semibold pt-2">Option 1: Simple Method (OLLAMA_ORIGINS)</h3>
+            <p>To access your local Ollama server from this web app, you need to expose it to the internet. We recommend using <a href="https://ngrok.com/" target="_blank" rel="noopener noreferrer" className="underline font-semibold">ngrok</a>.</p>
+            <h3 className="font-semibold pt-2">Instructions:</h3>
             <ol className="list-decimal list-inside space-y-1 text-xs pl-2">
-                <li>If Ollama is running as a service, stop it first (e.g., <code className="bg-muted px-1 py-0.5 rounded">sudo systemctl stop ollama</code>).</li>
-                <li>Start Ollama from your terminal, allowing all origins: <code className="bg-muted px-1 py-0.5 rounded">OLLAMA_ORIGINS='*' ollama serve</code>. Note the port it is running on (usually 11434).</li>
-                <li>In a new terminal, point ngrok to that <span className="font-bold">exact port</span>: <code className="bg-muted px-1 py-0.5 rounded">ngrok http 11434</code>.</li>
-            </ol>
-
-            <h3 className="font-semibold pt-2">Option 2: Advanced Method (Nginx Reverse Proxy)</h3>
-            <p className="text-xs pl-2">Using a reverse proxy like Nginx is a more robust solution that gives you full control over headers.</p>
-            <ol className="list-decimal list-inside space-y-1 text-xs pl-2">
-                <li>Ensure Ollama is running normally on its port (e.g., 11434).</li>
-                <li>Create and enable an Nginx site config that listens on a different port (e.g., <span className="font-bold">11500</span>) and proxies to Ollama.
-                <pre className="bg-muted/50 p-2 rounded-md mt-1 text-[10px] whitespace-pre-wrap font-code">
-{`server {
-    listen 11500;
-    server_name _;
-
-    location / {
-        proxy_pass http://localhost:11434;
-        proxy_set_header Host $host;
-
-        # Add CORS headers
-        add_header 'Access-Control-Allow-Origin' '*' always;
-        add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS, PUT, DELETE' always;
-        add_header 'Access-Control-Allow-Headers' 'Authorization,Content-Type,Accept,Origin,User-Agent,ngrok-skip-browser-warning' always;
-
-        # Handle preflight OPTIONS requests
-        if ($request_method = 'OPTIONS') {
-            return 204;
-        }
-    }
-}`}
-            </pre>
+                <li>Make sure Ollama is running on your machine. You can start it from your terminal: <code className="bg-muted px-1 py-0.5 rounded">ollama serve</code>. Note the port it is using (usually 11434).</li>
+                <li>In a separate terminal, start ngrok to create a public URL for your Ollama server: <code className="bg-muted px-1 py-0.5 rounded">ngrok http 11434</code>.</li>
+                <li>Copy the HTTPS forwarding URL from the ngrok output (e.g., <code className="bg-muted px-1 py-0.5 rounded">https://....ngrok-free.app</code>).</li>
+                <li>Paste this ngrok URL into the "Ollama Server URL" field above and click "Save Settings".</li>
+                <li className="pt-1">
+                    <span className="font-semibold">Important:</span> The first time you visit your new ngrok URL in a browser, you may see a warning page. You must click "Visit Site" on that page to authorize your browser before the connection test will work.
                 </li>
-                <li>In a new terminal, point ngrok to your <span className="font-bold">Nginx port</span>, not the Ollama port: <code className="bg-muted px-1 py-0.5 rounded">ngrok http 11500</code>.</li>
             </ol>
-
-            <p className="font-semibold pt-2">Final Step (For Both Methods):</p>
-            <p className="text-xs pl-2">Copy the ngrok HTTPS URL into the "Ollama Server URL" field above. You may need to visit the ngrok URL in your browser first to click past a warning screen before the connection will work here.</p>
+            <p className="font-semibold pt-2">Note on CORS:</p>
+            <p className="text-xs pl-2">This application now proxies the connection test through its own backend, which avoids most common CORS (Cross-Origin Resource Sharing) errors. You should no longer need a complex reverse proxy setup (like Nginx) for the app to function correctly.</p>
         </AlertDescription>
       </Alert>
     </div>
