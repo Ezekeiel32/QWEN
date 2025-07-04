@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 
 const DEFAULT_SETTINGS = {
-  ollamaUrl: 'http://127.0.0.1:11434',
+  ollamaUrl: 'https://004a-2a06-c701-9364-c400-cac4-f2d1-96f6-f49f.ngrok-free.app',
   ollamaModel: 'qwen2:7b-custom',
   githubPat: '',
 };

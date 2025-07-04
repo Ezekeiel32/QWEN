@@ -74,7 +74,7 @@ export default function SettingsPage() {
             <div className="flex gap-2">
                 <Input
                 id="ollama-url"
-                placeholder="http://127.0.0.1:11434 or your ngrok URL"
+                placeholder="e.g., https://....ngrok-free.app"
                 value={ollamaUrl}
                 onChange={(e) => setOllamaUrl(e.target.value)}
                 />
