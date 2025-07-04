@@ -1,3 +1,4 @@
+
 'use server';
 
 /**
@@ -24,15 +25,12 @@ const AnalyzeCodeOutputSchema = z.object({
 });
 export type AnalyzeCodeOutput = z.infer<typeof AnalyzeCodeOutputSchema>;
 
-export async function analyzeCode(input: AnalyzeCodeInput): Promise<AnalyzeCodeOutput> {
-  const { repositoryName, fileContents, userQuestion, ollamaUrl, ollamaModel } = input;
 
-  const prompt = `You are an AI code analysis assistant for a repository named "${repositoryName}".
+const getSystemPrompt = (repositoryName: string, fileContents: string[]) => {
+  return `You are an AI code analysis assistant for a repository named "${repositoryName}".
 You have been given the content of several files as context. Your primary task is to analyze a user's request and determine the best course of action.
 
-USER REQUEST: "${userQuestion}"
-
-Based on the user's request and the file contents provided, please choose one of the following two response formats:
+Based on the user's request and the file contents provided, you MUST choose one of the following two response formats:
 
 1.  If the user's request is a specific, actionable code modification for a SINGLE file provided in the context, you MUST respond with ONLY a JSON object string with the following structure, and nothing else. Do not add any explanatory text before or after the JSON.
     Example: { "filePath": "src/components/ui/button.tsx", "changeDescription": "Add a transition-colors and active:scale-95 effect to the button." }
@@ -49,7 +47,14 @@ Here are the contents of the files for context:
 ---
 ${fileContents.join('\n\n---\n')}
 ---`;
+}
 
+
+export async function analyzeCode(input: AnalyzeCodeInput): Promise<AnalyzeCodeOutput> {
+  const { repositoryName, fileContents, userQuestion, ollamaUrl, ollamaModel } = input;
+
+  const systemPrompt = getSystemPrompt(repositoryName, fileContents);
+  
   try {
     if (!ollamaUrl) {
         throw new Error("Ollama URL is not configured. Please set it in the Settings page.");
@@ -59,6 +64,7 @@ ${fileContents.join('\n\n---\n')}
     }
 
     const finalUrl = `${ollamaUrl.replace(/\/$/, '')}/api/generate`;
+
     const response = await fetch(finalUrl, {
       method: 'POST',
       headers: {
@@ -67,7 +73,8 @@ ${fileContents.join('\n\n---\n')}
       },
       body: JSON.stringify({
         model: ollamaModel,
-        prompt: prompt,
+        system: systemPrompt,
+        prompt: userQuestion,
         stream: false,
       }),
     });

@@ -75,7 +75,7 @@ export default function SettingsPage() {
             <div className="flex gap-2">
                 <Input
                 id="ollama-url"
-                placeholder="e.g., https://....ngrok-free.app"
+                placeholder="e.g., http://localhost:11434 or your ngrok URL"
                 value={ollamaUrl}
                 onChange={(e) => setOllamaUrl(e.target.value)}
                 />
@@ -106,7 +106,7 @@ export default function SettingsPage() {
             <Label htmlFor="ollama-model">Model Name</Label>
             <Input
               id="ollama-model"
-              placeholder="e.g., qwen2:7b-custom"
+              placeholder="e.g., qwen2:7b"
               value={ollamaModel}
               onChange={(e) => setOllamaModel(e.target.value)}
             />
@@ -139,6 +139,9 @@ export default function SettingsPage() {
              <p className="text-xs text-muted-foreground flex items-center gap-1"><HelpCircle className="w-3 h-3"/>Your token is stored locally and never sent to our servers.</p>
           </div>
         </CardContent>
+         <CardFooter className="border-t px-6 py-4">
+          <Button onClick={handleSave}>Save Settings</Button>
+        </CardFooter>
       </Card>
 
       <Alert>

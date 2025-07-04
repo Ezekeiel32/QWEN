@@ -1,10 +1,11 @@
+
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
 
 const DEFAULT_SETTINGS = {
-  ollamaUrl: 'https://004a-2a06-c701-9364-c400-cac4-f2d1-96f6-f49f.ngrok-free.app',
-  ollamaModel: 'qwen2:7b-custom',
+  ollamaUrl: '',
+  ollamaModel: 'qwen2:7b',
   githubPat: '',
 };
 
@@ -18,7 +19,9 @@ export function useSettings() {
     try {
       const storedSettings = localStorage.getItem('qwen-weaver-settings');
       if (storedSettings) {
-        setSettingsState(JSON.parse(storedSettings));
+        // Merge stored settings with defaults to ensure all keys are present
+        const parsedSettings = JSON.parse(storedSettings);
+        setSettingsState(prev => ({...prev, ...parsedSettings}));
       }
     } catch (error) {
       console.error("Failed to load settings from localStorage", error);
