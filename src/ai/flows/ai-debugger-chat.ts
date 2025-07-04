@@ -28,15 +28,22 @@ export async function analyzeCode(input: AnalyzeCodeInput): Promise<AnalyzeCodeO
   const { repositoryName, fileContents, userQuestion, ollamaUrl, ollamaModel } = input;
 
   const prompt = `You are an AI code analysis assistant for a repository named "${repositoryName}".
-You have been given the content of several files as context. Based on this context, analyze the user's request.
+You have been given the content of several files as context. Your primary task is to analyze a user's request and determine the best course of action.
 
 USER REQUEST: "${userQuestion}"
 
-If the user's request is a specific, actionable code modification for a SINGLE file provided in the context, respond with ONLY a JSON object string with the following structure, and nothing else:
-{ "filePath": "path/to/the/file.ext", "changeDescription": "A concise description of the change to be made, for another AI to execute." }
-Example: { "filePath": "src/components/ui/button.tsx", "changeDescription": "Add a transition-colors and active:scale-95 effect to the button." }
+Based on the user's request and the file contents provided, please choose one of the following two response formats:
 
-If the request is a general question, an analysis request, or involves multiple files, respond with a conversational, helpful answer in plain text. DO NOT use JSON format for this.
+1.  If the user's request is a specific, actionable code modification for a SINGLE file provided in the context, you MUST respond with ONLY a JSON object string with the following structure, and nothing else. Do not add any explanatory text before or after the JSON.
+    Example: { "filePath": "src/components/ui/button.tsx", "changeDescription": "Add a transition-colors and active:scale-95 effect to the button." }
+    
+    Structure:
+    { 
+      "filePath": "path/to/the/file.ext", 
+      "changeDescription": "A concise, first-person instruction for another AI to execute the change. For example: 'Change the button color to blue.'" 
+    }
+
+2.  If the request is a general question, an analysis request, asks for an explanation, or involves multiple files, respond with a conversational, helpful answer in plain text. DO NOT use JSON format for this type of response.
 
 Here are the contents of the files for context:
 ---
@@ -58,6 +65,7 @@ ${fileContents.join('\n\n---\n')}
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'ngrok-skip-browser-warning': 'true'
       },
       body: JSON.stringify({
         model: ollamaModel,
