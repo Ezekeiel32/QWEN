@@ -7,15 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { SendHorizonal, Bot, User, FileCode, Check, ChevronsUpDown, Search, Folder, FolderOpen } from "lucide-react";
-import { CodeChangeCard } from "@/components/cards/CodeChangeCard";
+import { SendHorizonal, Bot, User, FileCode, Check, ChevronsUpDown, Search, Folder, FolderOpen, Cog } from "lucide-react";
 import type { ChatMessage, Repository } from "@/types";
 import { useAppContext } from "@/contexts/AppContext";
 import { useSettings } from "@/hooks/use-settings";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { analyzeCode } from "@/ai/flows/ai-debugger-chat";
-import { applyCodeChanges } from "@/ai/flows/apply-code-changes";
+import { runAiAgent } from "@/ai/flows/ai-debugger-chat";
 import { useToast } from "@/hooks/use-toast";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -120,108 +118,123 @@ export default function DebuggerPage() {
     const files = selectedRepo.files.filter(file => file.path.toLowerCase().includes(fileSearch.toLowerCase()));
     return buildFileTree(files);
   }, [selectedRepo, fileSearch]);
+  
+  const handleSystemMessage = (content: string) => {
+    const systemMessage: ChatMessage = {
+      id: Date.now().toString(),
+      role: 'system',
+      content,
+    };
+    setDebuggerState({ messages: [...messages, systemMessage] });
+    return [...messages, systemMessage];
+  };
+
+  const handleAiMessage = (content: string) => {
+    const aiMessage: ChatMessage = {
+      id: Date.now().toString(),
+      role: 'ai',
+      content,
+    };
+    setDebuggerState({ messages: [...messages, aiMessage] });
+  }
 
   const handleSend = async () => {
     if (!input.trim() || !selectedRepo) return;
     setIsLoading(true);
-
-    if (!settings.ollamaUrl || !settings.ollamaModel) {
-      toast({
-        variant: "destructive",
-        title: "AI Not Configured",
-        description: (
-            <p>
-              Please configure your Ollama server URL and model name in the{' '}
-              <Link href="/settings" className="underline font-bold">
-                Settings
-              </Link>{' '}
-              page.
-            </p>
-        ),
-      });
-      setIsLoading(false);
-      return;
-    }
 
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
       role: 'user',
       content: input,
     };
-    setDebuggerState({ messages: [...messages, userMessage] });
+    let currentMessages: ChatMessage[] = [...messages, userMessage];
+    setDebuggerState({ messages: currentMessages });
+    const userPrompt = input;
     setInput("");
 
+    const MAX_TURNS = 10;
+    let turn = 0;
+
     try {
-      const contextFiles = selectedRepo.files.filter(file => selectedFilePaths.has(file.path));
-      const fileContents = contextFiles.map(file => `// FILE: ${file.path}\n\n${file.content}`);
+      while (turn < MAX_TURNS) {
+        turn++;
 
-      if (contextFiles.length === 0) {
-        throw new Error("Please select at least one file for context before asking the AI.");
-      }
-
-      const analysisInput = {
-        repositoryName: selectedRepo.name,
-        fileContents,
-        userQuestion: input,
-        ollamaUrl: settings.ollamaUrl,
-        ollamaModel: settings.ollamaModel,
-      };
-      
-      const analysisResponse = await analyzeCode(analysisInput);
-      const aiResponseText = analysisResponse.analysisResult;
-      
-      let parsedResponse;
-      try {
-        parsedResponse = JSON.parse(aiResponseText);
-      } catch (e) {
-        setDebuggerState({ messages: [...messages, userMessage, { id: Date.now().toString(), role: 'ai', content: aiResponseText }] });
-        setIsLoading(false);
-        return;
-      }
-
-      if (parsedResponse.filePath && parsedResponse.changeDescription) {
-        const { filePath, changeDescription } = parsedResponse;
-        const originalFile = selectedRepo.files.find(f => f.path === filePath);
-
-        if (!originalFile) {
-          throw new Error(`File '${filePath}' not found in the current context.`);
-        }
-
-        const applyResponse = await applyCodeChanges({
-          fileName: filePath,
-          originalCode: originalFile.content,
-          suggestedChanges: changeDescription,
+        const agentInput = {
+          repositoryName: selectedRepo.name,
+          fileList: selectedRepo.files.map(f => f.path),
+          messages: currentMessages,
           ollamaUrl: settings.ollamaUrl,
           ollamaModel: settings.ollamaModel,
-        });
-
-        const modifiedCode = applyResponse.updatedCode;
-        
-        const aiMessage: ChatMessage = {
-          id: Date.now().toString(),
-          role: 'ai',
-          content: "I've prepared the following changes for `" + filePath + "` based on your request.",
-          codeChange: { filePath, originalCode: originalFile.content, modifiedCode },
         };
-        setDebuggerState({ messages: [...messages, userMessage, aiMessage] });
-        addTask({
-          id: Date.now().toString(),
-          repositoryId: selectedRepo.id,
-          prompt: input,
-          status: 'completed',
-          createdAt: new Date().toISOString(),
-          originalCode: originalFile.content,
-          modifiedCode: modifiedCode,
-        });
-      } else {
-         setDebuggerState({ messages: [...messages, userMessage, { id: Date.now().toString(), role: 'ai', content: aiResponseText }] });
+
+        const agentResponse = await runAiAgent(agentInput);
+        let action;
+        try {
+          action = JSON.parse(agentResponse.response);
+        } catch (e) {
+          handleAiMessage("The AI returned an invalid response. Please try again.");
+          break;
+        }
+
+        if (action.action === 'readFile') {
+          const file = selectedRepo.files.find(f => f.path === action.path);
+          const messageContent = file
+            ? `File content for \`${action.path}\`:\n\n\`\`\`\n${file.content}\n\`\`\``
+            : `Error: File \`${action.path}\` not found.`;
+          
+          const systemMessage: ChatMessage = { id: Date.now().toString(), role: 'system', content: messageContent };
+          currentMessages = [...currentMessages, systemMessage];
+          setDebuggerState({ messages: currentMessages });
+          continue; // Continue loop to let AI process the new info
+        
+        } else if (action.action === 'writeFile') {
+          const originalFile = selectedRepo.files.find(f => f.path === action.path);
+          if (!originalFile) {
+            const systemMessage: ChatMessage = { id: Date.now().toString(), role: 'system', content: `Error: Could not write to file \`${action.path}\` because it was not found.` };
+            currentMessages = [...currentMessages, systemMessage];
+            setDebuggerState({ messages: currentMessages });
+            continue;
+          }
+
+          updateFileContent(selectedRepo.id, action.path, action.content);
+          toast({
+            title: "File Updated by AI",
+            description: `${action.path} has been modified.`,
+          });
+          addTask({
+            id: Date.now().toString(),
+            repositoryId: selectedRepo.id,
+            prompt: userPrompt,
+            status: 'completed',
+            createdAt: new Date().toISOString(),
+            originalCode: originalFile.content,
+            modifiedCode: action.content,
+          });
+
+          const systemMessage: ChatMessage = { id: Date.now().toString(), role: 'system', content: `Success: The file \`${action.path}\` has been updated.` };
+          currentMessages = [...currentMessages, systemMessage];
+          setDebuggerState({ messages: currentMessages });
+          continue;
+
+        } else if (action.action === 'finish') {
+          handleAiMessage(action.message);
+          break; // End of loop
+        
+        } else {
+          handleAiMessage("The AI returned an unknown action. Please try again.");
+          break;
+        }
+      }
+
+      if (turn >= MAX_TURNS) {
+        handleAiMessage("The AI took too many steps to complete the request. Please try again with a more specific prompt.");
       }
 
     } catch (error) {
-      console.error("AI Error:", error);
+      console.error("AI Agent Error:", error);
       const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
       toast({ variant: "destructive", title: "AI Error", description: errorMessage });
-      setDebuggerState({ messages: [...messages, userMessage, { id: Date.now().toString(), role: 'ai', content: `I encountered an error: ${errorMessage}` }] });
+      handleAiMessage(`I encountered an error: ${errorMessage}`);
     } finally {
       setIsLoading(false);
     }
@@ -236,15 +249,6 @@ export default function DebuggerPage() {
     }
   }, [messages]);
 
-  const handleApplyChange = (filePath: string, newContent: string) => {
-    if (!selectedRepoId) return;
-    updateFileContent(selectedRepoId, filePath, newContent);
-    toast({
-      title: "Change Applied!",
-      description: `${filePath} has been updated in this session.`,
-    });
-  };
-  
   const toggleFolder = (path: string) => {
     const newSet = new Set(debuggerState.openFolders);
     if (newSet.has(path)) {
@@ -396,13 +400,10 @@ export default function DebuggerPage() {
           <Card className="flex-grow flex flex-col">
             <CardHeader>
               <CardTitle className="text-base">File Explorer</CardTitle>
+               <p className="text-sm text-muted-foreground">The AI agent has access to all files below.</p>
                <div className="relative">
                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground"/>
                 <Input placeholder="Search files..." value={fileSearch} onChange={(e) => setFileSearch(e.target.value)} className="pl-8"/>
-              </div>
-              <div className="flex gap-2 pt-2">
-                <Button size="sm" variant="outline" onClick={handleSelectAll} disabled={!selectedRepo}>Select All</Button>
-                <Button size="sm" variant="outline" onClick={handleClearSelection} disabled={selectedFilePaths.size === 0}>Clear Selection</Button>
               </div>
             </CardHeader>
             <CardContent className="flex-grow overflow-hidden">
@@ -422,31 +423,30 @@ export default function DebuggerPage() {
               {messages.length === 0 ? (
                 <div className="text-center text-muted-foreground pt-16">
                   <Bot className="mx-auto h-12 w-12 mb-4 text-primary/50" />
-                  <h3 className="text-lg font-semibold">AI Debugger</h3>
-                  <p className="text-sm">Select files and ask me to refactor, debug, or explain code.</p>
+                  <h3 className="text-lg font-semibold">AI Agent</h3>
+                  <p className="text-sm">I can read and write files in the repository. Give me a task.</p>
                 </div>
               ) : (
                 messages.map((message) => (
                   <div key={message.id} className={`flex items-start gap-3 ${message.role === 'user' ? 'justify-end' : ''}`}>
                     {message.role === 'ai' && <div className="p-2 rounded-full bg-primary/10 text-primary"><Bot className="w-5 h-5" /></div>}
-                    <div className={`max-w-2xl rounded-lg p-3 ${message.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-secondary'}`}>
+                    {message.role === 'system' && <div className="p-2 rounded-full bg-muted text-muted-foreground"><Cog className="w-5 h-5" /></div>}
+                    
+                    <div className={`max-w-2xl rounded-lg p-3 ${
+                      message.role === 'user' ? 'bg-primary text-primary-foreground' 
+                      : message.role === 'system' ? 'bg-muted/60 text-muted-foreground italic' 
+                      : 'bg-secondary'}`
+                    }>
                       <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-                      {message.codeChange && (
-                        <CodeChangeCard
-                          filePath={message.codeChange.filePath}
-                          originalCode={message.codeChange.originalCode}
-                          modifiedCode={message.codeChange.modifiedCode}
-                          onApply={() => handleApplyChange(message.codeChange!.filePath, message.codeChange!.modifiedCode)}
-                        />
-                      )}
                     </div>
+
                     {message.role === 'user' && <div className="p-2 rounded-full bg-secondary"><User className="w-5 h-5" /></div>}
                   </div>
                 ))
               )}
                {isLoading && (
                  <div className="flex items-start gap-3">
-                    <div className="p-2 rounded-full bg-primary/10 text-primary"><Bot className="w-5 h-5" /></div>
+                    <div className="p-2 rounded-full bg-primary/10 text-primary"><Bot className="w-5 h-5 animate-pulse" /></div>
                     <div className="max-w-xl rounded-lg p-3 bg-secondary">
                         <div className="flex items-center space-x-2">
                             <div className="w-2 h-2 rounded-full bg-muted-foreground animate-pulse delay-0"></div>
@@ -461,7 +461,7 @@ export default function DebuggerPage() {
           <div className="border-t p-4 bg-background/50 rounded-b-lg">
             <div className="relative">
               <Input
-                placeholder={selectedRepo ? "Ask to refactor, debug, or explain code..." : "Please select a repository first."}
+                placeholder={selectedRepo ? "Ask the AI to perform a task..." : "Please select a repository first."}
                 className="pr-12"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}

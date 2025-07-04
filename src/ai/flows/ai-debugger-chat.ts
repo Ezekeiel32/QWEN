@@ -2,55 +2,58 @@
 'use server';
 
 /**
- * @fileOverview AI Debugger Chat flow for analyzing code in the current repository.
+ * @fileOverview AI Debugger Agent flow for analyzing code in the current repository.
  *
- * - analyzeCode - A function that handles the code analysis process.
- * - AnalyzeCodeInput - The input type for the analyzeCode function.
- * - AnalyzeCodeOuptut - The return type for the analyzeCode function.
+ * - runAiAgent - A function that acts as an agent, able to read and write files.
+ * - AiAgentInput - The input type for the runAiAgent function.
+ * - AiAgentOutput - The return type for the runAiAgent function.
  */
 import {z} from 'zod';
+import type { ChatMessage } from '@/types';
 
-const getSystemPrompt = (repositoryName: string, fileContents: string[]) => {
-  return `You are an AI code analysis assistant for a repository named "${repositoryName}".
-You have been given the content of several files as context. Your primary task is to analyze a user's request and determine the best course of action.
+const getSystemPrompt = (repositoryName: string, fileList: string[]) => {
+  return `You are an expert AI software developer inside a web-based code editor for a repository named "${repositoryName}". Your goal is to help the user with their requests by reading and writing files.
 
-Based on the user's request and the file contents provided, you MUST choose one of the following two response formats:
+You operate in a loop. On each turn, you will be given the full chat history. You must respond with a JSON object that specifies your next action.
 
-1.  If the user's request is a specific, actionable code modification for a SINGLE file provided in the context, you MUST respond with ONLY a JSON object string with the following structure, and nothing else. Do not add any explanatory text before or after the JSON.
-    Example: { "filePath": "src/components/ui/button.tsx", "changeDescription": "Add a transition-colors and active:scale-95 effect to the button." }
-    
-    Structure:
-    { 
-      "filePath": "path/to/the/file.ext", 
-      "changeDescription": "A concise, first-person instruction for another AI to execute the change. For example: 'Change the button color to blue.'" 
-    }
+You have access to the following tools:
 
-2.  If the request is a general question, an analysis request, asks for an explanation, or involves multiple files, respond with a conversational, helpful answer in plain text. DO NOT use JSON format for this type of response.
+1.  **readFile**: Reads the content of a single file. Use this when you need to understand what's in a file.
+    -   JSON format: \`{ "action": "readFile", "path": "path/to/the/file.ext" }\`
 
-Here are the contents of the files for context:
----
-${fileContents.join('\n\n---\n')}
----`;
+2.  **writeFile**: Writes content to a file. Use this to apply changes, fix bugs, or create new files.
+    -   JSON format: \`{ "action": "writeFile", "path": "path/to/the/file.ext", "content": "The new full content of the file..." }\`
+
+3.  **finish**: Ends the conversation and provides a final answer to the user.
+    -   JSON format: \`{ "action": "finish", "message": "Your final response to the user." }\`
+
+**RULES:**
+-   **Always respond with a valid JSON object specifying a single action.** Do not add any text outside the JSON.
+-   Think step-by-step. For example, to modify a file, you must **read it first** to see its contents, then you can **write the changes**.
+-   When you have completed the user's request, use the **finish** action to respond to the user.
+-   The user has provided a list of files as context. Do not try to read or write files that are not in this list.
+
+Here is the list of available files in the repository:
+${fileList.join('\n')}
+`;
 }
 
-
-const AnalyzeCodeInputSchema = z.object({
+const AiAgentInputSchema = z.object({
   repositoryName: z.string().describe('The name of the repository to analyze.'),
-  fileContents: z.array(z.string()).describe('An array of file contents from the repository.'),
-  userQuestion: z.string().describe('The user question about the code.'),
+  fileList: z.array(z.string()).describe('An array of file paths in the repository.'),
+  messages: z.array(z.any()).describe('The full chat history.'), // Using z.any() for ChatMessage to avoid circular dependencies
   ollamaUrl: z.string().describe('The URL of the Ollama server.'),
   ollamaModel: z.string().describe('The model to use on the Ollama server.'),
 });
-export type AnalyzeCodeInput = z.infer<typeof AnalyzeCodeInputSchema>;
+export type AiAgentInput = z.infer<typeof AiAgentInputSchema>;
 
-const AnalyzeCodeOutputSchema = z.object({
-  analysisResult: z.string().describe('The AI-powered analysis result of the code.'),
+const AiAgentOutputSchema = z.object({
+  response: z.string().describe('The raw JSON response from the AI model.'),
 });
-export type AnalyzeCodeOuptut = z.infer<typeof AnalyzeCodeOutputSchema>;
+export type AiAgentOutput = z.infer<typeof AiAgentOutputSchema>;
 
-
-export async function analyzeCode(input: AnalyzeCodeInput): Promise<AnalyzeCodeOuptut> {
-  const { repositoryName, fileContents, userQuestion, ollamaUrl, ollamaModel } = input;
+export async function runAiAgent(input: AiAgentInput): Promise<AiAgentOutput> {
+  const { repositoryName, fileList, messages, ollamaUrl, ollamaModel } = input;
   
   try {
     if (!ollamaUrl) {
@@ -60,20 +63,29 @@ export async function analyzeCode(input: AnalyzeCodeInput): Promise<AnalyzeCodeO
         throw new Error("Ollama Model is not configured. Please set it in the Settings page.");
     }
 
-    const systemPrompt = getSystemPrompt(repositoryName, fileContents);
+    const systemPrompt = getSystemPrompt(repositoryName, fileList);
     
+    // Convert our typed messages to a simple format for the model
+    const simplifiedMessages = messages.map(msg => ({
+      role: msg.role === 'ai' ? 'assistant' : msg.role,
+      content: msg.content,
+    }));
+
     const response = await fetch(new URL('/api/ollama', process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:9000'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         ollamaUrl,
-        path: '/api/generate',
+        path: '/api/chat', // Use the chat endpoint for multi-turn history
         method: 'POST',
         body: {
           model: ollamaModel,
-          system: systemPrompt,
-          prompt: userQuestion,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            ...simplifiedMessages
+          ],
           stream: false,
+          format: 'json', // Ensure the output is JSON
         },
       }),
     });
@@ -81,11 +93,14 @@ export async function analyzeCode(input: AnalyzeCodeInput): Promise<AnalyzeCodeO
     const data = await response.json();
 
     if (!response.ok) {
-       throw new Error(`Ollama server responded with status ${response.status}: ${data.error} - ${data.details}`);
+       throw new Error(`Ollama server responded with status ${response.status}: ${data.error || JSON.stringify(data)}`);
     }
     
+    // The chat endpoint returns the response in a message object
+    const responseContent = data.message?.content || '{}';
+
     return {
-      analysisResult: data.response,
+      response: responseContent,
     };
   } catch (error) {
     console.error("Error calling Ollama service:", error);

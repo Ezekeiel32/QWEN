@@ -27,13 +27,8 @@ export interface AITask {
 
 export interface ChatMessage {
     id: string;
-    role: 'user' | 'ai';
+    role: 'user' | 'ai' | 'system';
     content: string;
-    codeChange?: {
-        filePath: string;
-        originalCode: string;
-        modifiedCode: string;
-    };
 }
 
 export interface DebuggerState {
