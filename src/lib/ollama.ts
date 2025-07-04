@@ -17,12 +17,14 @@ export async function testOllamaConnection(url: string): Promise<ConnectionResul
 
     try {
         const trimmedUrl = url.trim();
+        // The endpoint for listing models is /api/tags
         const finalUrl = trimmedUrl.endsWith('/') ? `${trimmedUrl}api/tags` : `${trimmedUrl}/api/tags`;
 
         const response = await fetch(finalUrl, {
             method: 'GET',
             signal: controller.signal,
             headers: {
+                // This header is crucial for bypassing the ngrok interstitial page.
                 'ngrok-skip-browser-warning': 'true'
             }
         });
@@ -40,9 +42,11 @@ export async function testOllamaConnection(url: string): Promise<ConnectionResul
         } else {
             const errorText = await response.text();
             let message = `Server responded with status ${response.status}. Message: ${errorText || response.statusText}.`;
-            
+
             if(errorText.includes('ngrok-skip-browser-warning') || errorText.includes('ERR_NGROK_')) {
                 message = "Connection blocked by ngrok. Please visit your ngrok URL in a new browser tab and click 'Visit Site' to authorize access, then try again."
+            } else if (response.status === 404) {
+                 message = `Server responded with 404 Not Found. Please ensure your Ollama URL is correct and the server is running.`
             }
             return {
                 status: 'error',
@@ -57,6 +61,7 @@ export async function testOllamaConnection(url: string): Promise<ConnectionResul
                 message: 'Connection timed out after 10 seconds. Check if the server URL is correct, reachable, and not blocked by a firewall.',
             };
         }
+        // This will catch CORS errors if Nginx is misconfigured.
         return {
             status: 'error',
             message: `A network error occurred. This is often a CORS issue. For global access, ensure your server is configured to handle CORS requests correctly (e.g., via OLLAMA_ORIGINS='*' or an Nginx proxy). Error: ${error instanceof Error ? error.message : String(error)}`,
