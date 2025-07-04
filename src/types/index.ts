@@ -35,3 +35,10 @@ export interface ChatMessage {
         modifiedCode: string;
     };
 }
+
+export interface DebuggerState {
+  selectedRepoId: string | null;
+  messages: ChatMessage[];
+  selectedFilePaths: string[]; // Stored as array for JSON compatibility
+  openFolders: string[]; // Stored as array for JSON compatibility
+}

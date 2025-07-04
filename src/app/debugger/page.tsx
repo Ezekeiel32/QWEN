@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { SendHorizonal, Bot, User, FileCode, Check, ChevronsUpDown, Search, Folder, FolderOpen } from "lucide-react";
 import { CodeChangeCard } from "@/components/cards/CodeChangeCard";
-import type { ChatMessage, CodeFile, Repository } from "@/types";
+import type { ChatMessage, Repository } from "@/types";
 import { useAppContext } from "@/contexts/AppContext";
 import { useSettings } from "@/hooks/use-settings";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -19,6 +19,7 @@ import { applyCodeChanges } from "@/ai/flows/apply-code-changes";
 import { useToast } from "@/hooks/use-toast";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import type { CodeFile } from "@/types";
 
 // Types for file tree
 interface FileTreeNode {
@@ -79,31 +80,36 @@ const getFilesInNode = (node: FileTreeNode): string[] => {
 };
 
 export default function DebuggerPage() {
-  const { repositories, updateFileContent, addTask } = useAppContext();
+  const { repositories, updateFileContent, addTask, debuggerState, setDebuggerState } = useAppContext();
+  const { selectedRepoId, messages } = debuggerState;
+  
   const { settings } = useSettings();
   const { toast } = useToast();
   const searchParams = useSearchParams();
 
-  const [selectedRepoId, setSelectedRepoId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  
-  const [selectedFilePaths, setSelectedFilePaths] = useState<Set<string>>(new Set());
   const [fileSearch, setFileSearch] = useState('');
   const [repoOpen, setRepoOpen] = useState(false);
-  const [openFolders, setOpenFolders] = useState<Set<string>>(new Set());
+
+  const selectedFilePaths = useMemo(() => new Set(debuggerState.selectedFilePaths), [debuggerState.selectedFilePaths]);
+  const openFolders = useMemo(() => new Set(debuggerState.openFolders), [debuggerState.openFolders]);
 
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const repoId = searchParams.get('repoId');
-    if (repoId) {
-      setSelectedRepoId(repoId);
-    } else if (repositories.length > 0) {
-      setSelectedRepoId(repositories[0].id);
+    const repoIdFromParams = searchParams.get('repoId');
+    if (repoIdFromParams && repoIdFromParams !== selectedRepoId) {
+       setDebuggerState({
+        selectedRepoId: repoIdFromParams,
+        messages: [],
+        selectedFilePaths: [],
+        openFolders: [],
+      });
+    } else if (!selectedRepoId && repositories.length > 0) {
+       setDebuggerState({ selectedRepoId: repositories[0].id });
     }
-  }, [searchParams, repositories]);
+  }, [searchParams, repositories, selectedRepoId, setDebuggerState]);
 
   const selectedRepo = useMemo(() => {
     return repositories.find(repo => repo.id === selectedRepoId);
@@ -142,7 +148,7 @@ export default function DebuggerPage() {
       role: 'user',
       content: input,
     };
-    setMessages(prev => [...prev, userMessage]);
+    setDebuggerState({ messages: [...messages, userMessage] });
     setInput("");
 
     try {
@@ -168,7 +174,7 @@ export default function DebuggerPage() {
       try {
         parsedResponse = JSON.parse(aiResponseText);
       } catch (e) {
-        setMessages(prev => [...prev, { id: Date.now().toString(), role: 'ai', content: aiResponseText }]);
+        setDebuggerState({ messages: [...messages, userMessage, { id: Date.now().toString(), role: 'ai', content: aiResponseText }] });
         setIsLoading(false);
         return;
       }
@@ -197,7 +203,7 @@ export default function DebuggerPage() {
           content: "I've prepared the following changes for `" + filePath + "` based on your request.",
           codeChange: { filePath, originalCode: originalFile.content, modifiedCode },
         };
-        setMessages(prev => [...prev, aiMessage]);
+        setDebuggerState({ messages: [...messages, userMessage, aiMessage] });
         addTask({
           id: Date.now().toString(),
           repositoryId: selectedRepo.id,
@@ -208,14 +214,14 @@ export default function DebuggerPage() {
           modifiedCode: modifiedCode,
         });
       } else {
-         setMessages(prev => [...prev, { id: Date.now().toString(), role: 'ai', content: aiResponseText }]);
+         setDebuggerState({ messages: [...messages, userMessage, { id: Date.now().toString(), role: 'ai', content: aiResponseText }] });
       }
 
     } catch (error) {
       console.error("AI Error:", error);
       const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
       toast({ variant: "destructive", title: "AI Error", description: errorMessage });
-      setMessages(prev => [...prev, { id: Date.now().toString(), role: 'ai', content: `I encountered an error: ${errorMessage}` }]);
+      setDebuggerState({ messages: [...messages, userMessage, { id: Date.now().toString(), role: 'ai', content: `I encountered an error: ${errorMessage}` }] });
     } finally {
       setIsLoading(false);
     }
@@ -240,50 +246,44 @@ export default function DebuggerPage() {
   };
   
   const toggleFolder = (path: string) => {
-    setOpenFolders(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(path)) {
-        newSet.delete(path);
-      } else {
-        newSet.add(path);
-      }
-      return newSet;
-    });
+    const newSet = new Set(debuggerState.openFolders);
+    if (newSet.has(path)) {
+      newSet.delete(path);
+    } else {
+      newSet.add(path);
+    }
+    setDebuggerState({ openFolders: Array.from(newSet) });
   };
 
   const handleFileSelect = (path: string, isChecked: boolean) => {
-    setSelectedFilePaths(prev => {
-      const newSet = new Set(prev);
-      if (isChecked) {
-        newSet.add(path);
-      } else {
-        newSet.delete(path);
-      }
-      return newSet;
-    });
+    const newSet = new Set(debuggerState.selectedFilePaths);
+    if (isChecked) {
+      newSet.add(path);
+    } else {
+      newSet.delete(path);
+    }
+    setDebuggerState({ selectedFilePaths: Array.from(newSet) });
   };
 
   const handleFolderSelect = (node: FileTreeNode, isChecked: boolean) => {
     const filesToChange = getFilesInNode(node);
-    setSelectedFilePaths(prev => {
-      const newSet = new Set(prev);
-      if (isChecked) {
-        filesToChange.forEach(file => newSet.add(file));
-      } else {
-        filesToChange.forEach(file => newSet.delete(file));
-      }
-      return newSet;
-    });
+    const newSet = new Set(debuggerState.selectedFilePaths);
+    if (isChecked) {
+      filesToChange.forEach(file => newSet.add(file));
+    } else {
+      filesToChange.forEach(file => newSet.delete(file));
+    }
+    setDebuggerState({ selectedFilePaths: Array.from(newSet) });
   };
 
   const handleSelectAll = () => {
     if (!selectedRepo) return;
     const allFilePaths = selectedRepo.files.map(f => f.path);
-    setSelectedFilePaths(new Set(allFilePaths));
+    setDebuggerState({ selectedFilePaths: allFilePaths });
   };
 
   const handleClearSelection = () => {
-    setSelectedFilePaths(new Set());
+    setDebuggerState({ selectedFilePaths: [] });
   };
 
   const RecursiveFileTree = useCallback(({ tree, level = 0 }: { tree: FileTree, level?: number }) => {
@@ -299,7 +299,7 @@ export default function DebuggerPage() {
           if (node.type === 'folder') {
             const allChildFiles = getFilesInNode(node);
             const selectedChildFiles = allChildFiles.filter(path => selectedFilePaths.has(path));
-            const isChecked = selectedChildFiles.length > 0 && selectedChildFiles.length === allChildFiles.length;
+            const isChecked = allChildFiles.length > 0 && selectedChildFiles.length === allChildFiles.length;
             const isIndeterminate = selectedChildFiles.length > 0 && selectedChildFiles.length < allChildFiles.length;
             const checkboxState = isChecked ? true : isIndeterminate ? 'indeterminate' : false;
   
@@ -341,7 +341,7 @@ export default function DebuggerPage() {
         })}
       </div>
     );
-  }, [openFolders, selectedFilePaths]);
+  }, [openFolders, selectedFilePaths, toggleFolder, handleFolderSelect, handleFileSelect]);
 
 
   return (
@@ -372,10 +372,15 @@ export default function DebuggerPage() {
                           key={repo.id}
                           value={repo.name}
                           onSelect={() => {
-                            setSelectedRepoId(repo.id);
+                            if (repo.id !== selectedRepoId) {
+                                setDebuggerState({
+                                  selectedRepoId: repo.id,
+                                  messages: [],
+                                  selectedFilePaths: [],
+                                  openFolders: [],
+                                });
+                            }
                             setRepoOpen(false);
-                            setMessages([]);
-                            setSelectedFilePaths(new Set());
                           }}
                         >
                           <Check className={`mr-2 h-4 w-4 ${selectedRepoId === repo.id ? "opacity-100" : "opacity-0"}`} />

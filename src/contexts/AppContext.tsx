@@ -1,22 +1,33 @@
 "use client";
 
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
-import type { Repository, AITask } from '@/types';
+import type { Repository, AITask, DebuggerState, ChatMessage } from '@/types';
 
 interface AppContextType {
   repositories: Repository[];
   tasks: AITask[];
+  debuggerState: DebuggerState;
   addRepository: (repo: Repository) => void;
   removeRepository: (repoId: string) => void;
   updateFileContent: (repoId: string, filePath: string, newContent: string) => void;
   addTask: (task: AITask) => void;
+  setDebuggerState: (newState: Partial<DebuggerState>) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
+const DEFAULT_DEBUGGER_STATE: DebuggerState = {
+  selectedRepoId: null,
+  messages: [],
+  selectedFilePaths: [],
+  openFolders: [],
+};
+
+
 export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [repositories, setRepositories] = useState<Repository[]>([]);
   const [tasks, setTasks] = useState<AITask[]>([]);
+  const [debuggerState, setDebuggerStateInternal] = useState<DebuggerState>(DEFAULT_DEBUGGER_STATE);
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
@@ -28,6 +39,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       const storedTasks = localStorage.getItem('qwen-weaver-tasks');
       if (storedTasks) {
         setTasks(JSON.parse(storedTasks));
+      }
+      const storedDebuggerState = localStorage.getItem('qwen-weaver-debugger-state');
+      if (storedDebuggerState) {
+        setDebuggerStateInternal(prev => ({...prev, ...JSON.parse(storedDebuggerState)}));
       }
     } catch (error) {
       console.error("Failed to load data from localStorage", error);
@@ -56,6 +71,16 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [tasks, isLoaded]);
 
+  useEffect(() => {
+    if(isLoaded) {
+        try {
+            localStorage.setItem('qwen-weaver-debugger-state', JSON.stringify(debuggerState));
+        } catch (e) {
+            console.error("Failed to save debugger state to local storage", e);
+        }
+    }
+  }, [debuggerState, isLoaded]);
+
   const addRepository = (repo: Repository) => {
     setRepositories(prev => {
         const existing = prev.find(r => r.id === repo.id);
@@ -67,6 +92,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const removeRepository = (repoId: string) => {
+    if (debuggerState.selectedRepoId === repoId) {
+        setDebuggerStateInternal(DEFAULT_DEBUGGER_STATE);
+    }
     setRepositories(prev => prev.filter(r => r.id !== repoId));
   };
 
@@ -90,8 +118,23 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setTasks(prev => [task, ...prev].slice(0, 100)); // Keep last 100 tasks
   };
 
+  const setDebuggerState = (newState: Partial<DebuggerState>) => {
+    setDebuggerStateInternal(prev => ({ ...prev, ...newState }));
+  };
+
+  const value: AppContextType = {
+      repositories,
+      tasks,
+      debuggerState,
+      addRepository,
+      removeRepository,
+      updateFileContent,
+      addTask,
+      setDebuggerState
+  };
+
   return (
-    <AppContext.Provider value={{ repositories, tasks, addRepository, removeRepository, updateFileContent, addTask }}>
+    <AppContext.Provider value={value}>
       {children}
     </AppContext.Provider>
   );
