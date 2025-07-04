@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -146,10 +147,10 @@ export default function SettingsPage() {
         <AlertDescription className="space-y-2 mt-2">
             <p>To access your coding agent from any device, you need to expose your local Ollama server to the internet using ngrok.</p>
             <ol className="list-decimal list-inside space-y-1 text-xs">
-                <li><span className="font-semibold">Stop Ollama Service:</span> If Ollama is running as a background service (on Linux/macOS), stop it first: <code className="bg-muted px-1 py-0.5 rounded">sudo systemctl stop ollama</code></li>
-                <li><span className="font-semibold">Start Ollama with CORS:</span> In your terminal, run: <code className="bg-muted px-1 py-0.5 rounded">OLLAMA_ORIGINS='*' ollama serve</code></li>
-                <li><span className="font-semibold">Start ngrok:</span> In a new terminal, run: <code className="bg-muted px-1 py-0.5 rounded">ngrok http 11434</code></li>
-                <li><span className="font-semibold">Copy & Paste:</span> Copy the HTTPS URL from ngrok (e.g., https://....ngrok-free.app) and paste it into the "Ollama Server URL" field above.</li>
+                <li><span className="font-semibold">Stop Ollama Service (if running):</span> If Ollama is a background service, stop it first: <code className="bg-muted px-1 py-0.5 rounded">sudo systemctl stop ollama</code></li>
+                <li><span className="font-semibold">Start Ollama with CORS:</span> In your terminal, run: <code className="bg-muted px-1 py-0.5 rounded">OLLAMA_ORIGINS='*' ollama serve</code>. Note the port it's listening on (usually 11434).</li>
+                <li><span className="font-semibold">Start ngrok:</span> In a new terminal, forward the same port: <code className="bg-muted px-1 py-0.5 rounded">ngrok http 11434</code>. <span className="font-bold">The port number must match what Ollama is using.</span></li>
+                <li><span className="font-semibold">Copy & Paste:</span> Copy the HTTPS URL from ngrok and paste it into the "Ollama Server URL" field above.</li>
                 <li><span className="font-semibold">Authorize in Browser:</span> Open the ngrok URL in a new browser tab. You might see a warning page. Click "Visit Site" to authorize it. Then, test the connection here again.</li>
             </ol>
         </AlertDescription>
@@ -157,3 +158,4 @@ export default function SettingsPage() {
     </div>
   );
 }
+
