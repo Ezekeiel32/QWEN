@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing required parameters: ollamaUrl, path, method' }, { status: 400 });
     }
 
-    const finalUrl = `${ollamaUrl.replace(/\/$/, '')}/${path.replace(/^\//, '')}`;
+    const finalUrl = `${ollamaUrl.replace(/\/$/, '')}${path}`;
     
     const response = await fetch(finalUrl, {
       method: method,
@@ -23,10 +23,12 @@ export async function POST(req: NextRequest) {
 
     if (!response.ok) {
         const errorText = await response.text();
-        return new Response(errorText, { status: response.status, statusText: response.statusText });
+        // Return the error from Ollama server as a proper JSON response
+        return NextResponse.json({ error: `Ollama server responded with status ${response.status}`, details: errorText }, { status: response.status });
     }
 
     const contentType = response.headers.get('content-type');
+    // Handle streaming responses
     if (contentType && (contentType.includes('application/x-ndjson') || contentType.includes('application/jsonstream'))) {
         return new Response(response.body, {
             status: response.status,

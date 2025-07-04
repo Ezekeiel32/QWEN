@@ -6,25 +6,9 @@
  *
  * - analyzeCode - A function that handles the code analysis process.
  * - AnalyzeCodeInput - The input type for the analyzeCode function.
- * - AnalyzeCodeOutput - The return type for the analyzeCode function.
+ * - AnalyzeCodeOuptut - The return type for the analyzeCode function.
  */
-
 import {z} from 'zod';
-
-const AnalyzeCodeInputSchema = z.object({
-  repositoryName: z.string().describe('The name of the repository to analyze.'),
-  fileContents: z.array(z.string()).describe('An array of file contents from the repository.'),
-  userQuestion: z.string().describe('The user question about the code.'),
-  ollamaUrl: z.string().describe('The URL of the Ollama server.'),
-  ollamaModel: z.string().describe('The model to use on the Ollama server.'),
-});
-export type AnalyzeCodeInput = z.infer<typeof AnalyzeCodeInputSchema>;
-
-const AnalyzeCodeOutputSchema = z.object({
-  analysisResult: z.string().describe('The AI-powered analysis result of the code.'),
-});
-export type AnalyzeCodeOutput = z.infer<typeof AnalyzeCodeOutputSchema>;
-
 
 const getSystemPrompt = (repositoryName: string, fileContents: string[]) => {
   return `You are an AI code analysis assistant for a repository named "${repositoryName}".
@@ -50,10 +34,23 @@ ${fileContents.join('\n\n---\n')}
 }
 
 
-export async function analyzeCode(input: AnalyzeCodeInput): Promise<AnalyzeCodeOutput> {
-  const { repositoryName, fileContents, userQuestion, ollamaUrl, ollamaModel } = input;
+const AnalyzeCodeInputSchema = z.object({
+  repositoryName: z.string().describe('The name of the repository to analyze.'),
+  fileContents: z.array(z.string()).describe('An array of file contents from the repository.'),
+  userQuestion: z.string().describe('The user question about the code.'),
+  ollamaUrl: z.string().describe('The URL of the Ollama server.'),
+  ollamaModel: z.string().describe('The model to use on the Ollama server.'),
+});
+export type AnalyzeCodeInput = z.infer<typeof AnalyzeCodeInputSchema>;
 
-  const systemPrompt = getSystemPrompt(repositoryName, fileContents);
+const AnalyzeCodeOutputSchema = z.object({
+  analysisResult: z.string().describe('The AI-powered analysis result of the code.'),
+});
+export type AnalyzeCodeOuptut = z.infer<typeof AnalyzeCodeOutputSchema>;
+
+
+export async function analyzeCode(input: AnalyzeCodeInput): Promise<AnalyzeCodeOuptut> {
+  const { repositoryName, fileContents, userQuestion, ollamaUrl, ollamaModel } = input;
   
   try {
     if (!ollamaUrl) {
@@ -63,28 +60,29 @@ export async function analyzeCode(input: AnalyzeCodeInput): Promise<AnalyzeCodeO
         throw new Error("Ollama Model is not configured. Please set it in the Settings page.");
     }
 
-    const finalUrl = `${ollamaUrl.replace(/\/$/, '')}/api/generate`;
-
-    const response = await fetch(finalUrl, {
+    const systemPrompt = getSystemPrompt(repositoryName, fileContents);
+    
+    const response = await fetch(new URL('/api/ollama', process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:9000'), {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'ngrok-skip-browser-warning': 'true',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: ollamaModel,
-        system: systemPrompt,
-        prompt: userQuestion,
-        stream: false,
+        ollamaUrl,
+        path: '/api/generate',
+        method: 'POST',
+        body: {
+          model: ollamaModel,
+          system: systemPrompt,
+          prompt: userQuestion,
+          stream: false,
+        },
       }),
     });
 
-    if (!response.ok) {
-      const errorBody = await response.text();
-      throw new Error(`Ollama server responded with status ${response.status}: ${errorBody}`);
-    }
-
     const data = await response.json();
+
+    if (!response.ok) {
+       throw new Error(`Ollama server responded with status ${response.status}: ${data.error} - ${data.details}`);
+    }
     
     return {
       analysisResult: data.response,

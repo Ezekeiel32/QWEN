@@ -49,29 +49,30 @@ Now, provide the full and complete code with the changes applied.`;
             throw new Error("Ollama Model is not configured. Please set it in the Settings page.");
         }
         
-        const finalUrl = `${ollamaUrl.replace(/\/$/, '')}/api/generate`;
-        const response = await fetch(finalUrl, {
+        const response = await fetch(new URL('/api/ollama', process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:9000'), {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'ngrok-skip-browser-warning': 'true',
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              model: ollamaModel,
-              prompt: prompt,
-              stream: false,
+              ollamaUrl,
+              path: '/api/generate',
+              method: 'POST',
+              body: {
+                model: ollamaModel,
+                prompt: prompt,
+                stream: false,
+              },
             })
         });
 
-        if (!response.ok) {
-            const errorBody = await response.text();
-            throw new Error(`Ollama server responded with status ${response.status}: ${errorBody}`);
-        }
-
         const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(`Ollama server responded with status ${response.status}: ${data.error} - ${data.details}`);
+        }
         
         let updatedCode = data.response.trim();
         
+        // Clean up markdown code blocks if the model includes them
         if (updatedCode.startsWith('```') && updatedCode.endsWith('```')) {
             updatedCode = updatedCode.substring(updatedCode.indexOf('\n') + 1, updatedCode.lastIndexOf('\n')).trim();
         }

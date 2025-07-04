@@ -75,7 +75,7 @@ export default function SettingsPage() {
             <div className="flex gap-2">
                 <Input
                 id="ollama-url"
-                placeholder="e.g., http://localhost:11434 or your ngrok URL"
+                placeholder="e.g., http://localhost:11434 or your public ngrok URL"
                 value={ollamaUrl}
                 onChange={(e) => setOllamaUrl(e.target.value)}
                 />
@@ -156,10 +156,7 @@ export default function SettingsPage() {
                 <li>Copy the HTTPS forwarding URL from the ngrok output (e.g., <code className="bg-muted px-1 py-0.5 rounded">https://....ngrok-free.app</code>).</li>
                 <li>Paste this ngrok URL into the "Ollama Server URL" field above and save.</li>
                 <li className="pt-1">
-                    <span className="font-semibold">Important:</span> To avoid connection errors, this app automatically adds the <code className="bg-muted px-1 py-0.5 rounded">ngrok-skip-browser-warning</code> header to requests. If you still have trouble, you may need to visit your ngrok URL in your browser and click "Visit Site" to authorize access.
-                </li>
-                 <li className="pt-1">
-                    <span className="font-semibold">For advanced users with CORS issues:</span> If you are not using ngrok or are still seeing CORS errors, you may need to configure your Ollama server to accept requests from this app's origin by setting the <code className="bg-muted px-1 py-0.5 rounded">OLLAMA_ORIGINS</code> environment variable.
+                    <span className="font-semibold">Important:</span> To avoid connection errors from ngrok, you may need to visit your ngrok URL in your browser and click the "Visit Site" button to authorize access. This application will handle the necessary headers automatically.
                 </li>
             </ol>
         </AlertDescription>
