@@ -16,15 +16,12 @@ export async function testOllamaConnection(url: string): Promise<ConnectionResul
     const timeoutId = setTimeout(() => controller.abort(), 10000);
 
     try {
-        const trimmedUrl = url.trim();
-        // The endpoint for listing models is /api/tags
-        const finalUrl = trimmedUrl.endsWith('/') ? `${trimmedUrl}api/tags` : `${trimmedUrl}/api/tags`;
+        const finalUrl = `${url.replace(/\/$/, '')}/api/tags`;
 
         const response = await fetch(finalUrl, {
             method: 'GET',
             signal: controller.signal,
             headers: {
-                // This header is crucial for bypassing the ngrok interstitial page.
                 'ngrok-skip-browser-warning': 'true'
             }
         });
@@ -61,7 +58,6 @@ export async function testOllamaConnection(url: string): Promise<ConnectionResul
                 message: 'Connection timed out after 10 seconds. Check if the server URL is correct, reachable, and not blocked by a firewall.',
             };
         }
-        // This will catch CORS errors if Nginx is misconfigured.
         return {
             status: 'error',
             message: `A network error occurred. This is often a CORS issue. For global access, ensure your server is configured to handle CORS requests correctly (e.g., via OLLAMA_ORIGINS='*' or an Nginx proxy). Error: ${error instanceof Error ? error.message : String(error)}`,
