@@ -28,7 +28,7 @@ export interface AITask {
 
 export interface ChatMessage {
     id: string;
-    role: 'user' | 'ai' | 'system';
+    role: 'user' | 'ai' | 'system' | 'thought';
     content: string;
 }
 

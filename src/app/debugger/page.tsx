@@ -132,14 +132,7 @@ export default function DebuggerPage() {
     setInput("");
 
     try {
-      let turn = 0;
       while (true) {
-        turn++;
-        if (turn > 15) {
-          handleAiMessage("The AI agent seems to be stuck in a loop. Please try rephrasing your request.", currentMessages);
-          break;
-        }
-        
         const agentInput = {
           repositoryName: selectedRepo.name,
           fileList: selectedRepo.files.map(f => f.path),
@@ -151,7 +144,7 @@ export default function DebuggerPage() {
         const action: AiAgentOutput = await runAiAgent(agentInput);
         
         // Add AI's action/thought process to chat for visibility
-        const aiThoughtMessage: ChatMessage = { id: Date.now().toString(), role: 'ai', content: JSON.stringify(action, null, 2) };
+        const aiThoughtMessage: ChatMessage = { id: Date.now().toString(), role: 'thought', content: JSON.stringify(action, null, 2) };
         currentMessages = [...currentMessages, aiThoughtMessage];
         setDebuggerState({ messages: currentMessages });
 
@@ -457,11 +450,11 @@ Now, provide the complete and modified file content.
                 messages.map((message) => (
                   <div key={message.id} className={`flex items-start gap-3 ${message.role === 'user' ? 'justify-end' : ''}`}>
                     {message.role === 'ai' && <div className="p-2 rounded-full bg-primary/10 text-primary"><Bot className="w-5 h-5" /></div>}
-                    {message.role === 'system' && <div className="p-2 rounded-full bg-muted text-muted-foreground"><Cog className="w-5 h-5" /></div>}
+                    {(message.role === 'system' || message.role === 'thought') && <div className="p-2 rounded-full bg-muted text-muted-foreground"><Cog className="w-5 h-5" /></div>}
                     
                     <div className={`max-w-2xl rounded-lg p-3 ${
                       message.role === 'user' ? 'bg-primary text-primary-foreground' 
-                      : message.role === 'system' ? 'bg-muted/60 text-muted-foreground italic' 
+                      : (message.role === 'system' || message.role === 'thought') ? 'bg-muted/60 text-muted-foreground italic' 
                       : 'bg-secondary'}`
                     }>
                       <div className="text-sm whitespace-pre-wrap font-sans">{message.content}</div>

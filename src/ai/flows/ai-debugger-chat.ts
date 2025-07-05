@@ -76,10 +76,12 @@ export async function runAiAgent(input: AiAgentInput): Promise<AiAgentOutput> {
 
     const systemPrompt = getSystemPrompt(repositoryName, fileList);
 
-    // Convert our typed messages to a simple format for the model
-    const simplifiedMessages = messages.map(msg => ({
-      role: msg.role === 'ai' ? 'assistant' : msg.role,
-      content: msg.content,
+    // Convert our typed messages to a simple format for the model, filtering out thoughts
+    const simplifiedMessages = messages
+      .filter(msg => msg.role !== 'thought')
+      .map(msg => ({
+        role: msg.role === 'ai' ? 'assistant' : msg.role,
+        content: msg.content,
     }));
 
     const response = await fetch(new URL('/api/ollama', process.env.NEXT_PUBLIC_APP_URL), {
