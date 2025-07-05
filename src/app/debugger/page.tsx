@@ -131,13 +131,16 @@ export default function DebuggerPage() {
     const userPrompt = input;
     setInput("");
 
-    const MAX_TURNS = 10;
-    let turn = 0;
-
     try {
-      while (turn < MAX_TURNS) {
+      let turn = 0;
+      while (true) {
         turn++;
-
+        // Safety break for infinite loops, though the AI should eventually `finish`.
+        if (turn > 15) {
+          handleAiMessage("The AI agent seems to be stuck in a loop. Please try rephrasing your request.", currentMessages);
+          break;
+        }
+        
         const agentInput = {
           repositoryName: selectedRepo.name,
           fileList: selectedRepo.files.map(f => f.path),
@@ -149,7 +152,6 @@ export default function DebuggerPage() {
         const agentResponse = await runAiAgent(agentInput);
         let action;
         try {
-          // The response might have markdown ```json ... ``` wrapper
           const jsonResponse = agentResponse.response.trim().replace(/^```json\n?/, '').replace(/\n?```$/, '');
           action = JSON.parse(jsonResponse);
         } catch (e) {
@@ -157,10 +159,22 @@ export default function DebuggerPage() {
           currentMessages = handleAiMessage(errorMessage, currentMessages);
           break;
         }
+        
+        // Add AI's action/thought process to chat for visibility
+        const aiThoughtMessage: ChatMessage = { id: Date.now().toString(), role: 'ai', content: agentResponse.response };
+        currentMessages = [...currentMessages, aiThoughtMessage];
+        setDebuggerState({ messages: currentMessages });
+
 
         if (action.action === 'readFile') {
-          // Normalize path from AI to handle cases like "./file.txt"
-          const normalizedPath = action.path.startsWith('./') ? action.path.substring(2) : action.path;
+          const normalizedPath = action.path?.startsWith('./') ? action.path.substring(2) : action.path;
+          if (!normalizedPath) {
+             const systemMessage: ChatMessage = { id: Date.now().toString(), role: 'system', content: `Error: AI tried to read a file with an empty path.` };
+             currentMessages = [...currentMessages, systemMessage];
+             setDebuggerState({ messages: currentMessages });
+             continue; // Let AI try again
+          }
+
           const file = selectedRepo.files.find(f => f.path === normalizedPath);
           const messageContent = file
             ? `I have read the file \`${normalizedPath}\` for you. Here is the content:\n\n\`\`\`\n${file.content}\n\`\`\``
@@ -169,11 +183,10 @@ export default function DebuggerPage() {
           const systemMessage: ChatMessage = { id: Date.now().toString(), role: 'system', content: messageContent };
           currentMessages = [...currentMessages, systemMessage];
           setDebuggerState({ messages: currentMessages });
-          continue; // Continue loop to let AI process the new info
+          continue; 
         
         } else if (action.action === 'writeFile') {
-          // Normalize path from AI
-          const normalizedPath = action.path.startsWith('./') ? action.path.substring(2) : action.path;
+          const normalizedPath = action.path?.startsWith('./') ? action.path.substring(2) : action.path;
           const originalFile = selectedRepo.files.find(f => f.path === normalizedPath);
 
           if (!originalFile) {
@@ -203,18 +216,91 @@ export default function DebuggerPage() {
           setDebuggerState({ messages: currentMessages });
           continue;
 
+        } else if (action.action === 'naturalLanguageWriteFile') {
+            const { path, prompt: modificationPrompt } = action;
+            const normalizedPath = path?.startsWith('./') ? path.substring(2) : path;
+            const fileToModify = selectedRepo.files.find(f => f.path === normalizedPath);
+
+            if (!fileToModify) {
+                const systemMessage: ChatMessage = { id: Date.now().toString(), role: 'system', content: `Error: Cannot modify file \`${normalizedPath}\` because it does not exist.` };
+                currentMessages = [...currentMessages, systemMessage];
+                setDebuggerState({ messages: currentMessages });
+                continue;
+            }
+
+            const modificationSystemPrompt = `You are an expert AI programmer. Your task is to modify the following file based on the user's instructions.
+You must return ONLY the ENTIRE, NEW file content. Do not add any explanations, introductory text, or markdown formatting like \`\`\` around the code.`;
+            
+            const modificationUserPrompt = `
+Instruction: "${modificationPrompt}"
+
+Original file content of \`${normalizedPath}\`:
+\`\`\`
+${fileToModify.content}
+\`\`\`
+
+Now, provide the complete and modified file content.
+`;
+
+            const modificationResponse = await fetch('/api/ollama', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    ollamaUrl: settings.ollamaUrl,
+                    path: '/api/generate',
+                    method: 'POST',
+                    body: {
+                        model: settings.ollamaModel,
+                        prompt: `${modificationSystemPrompt}\n\n${modificationUserPrompt}`,
+                        stream: false,
+                    },
+                }),
+            });
+            
+            const data = await modificationResponse.json();
+
+            if (!modificationResponse.ok) {
+                const errorMessage = `Failed to get modification from AI: ${data.error || 'Unknown error'}`;
+                const systemMessage = { id: Date.now().toString(), role: 'system', content: errorMessage };
+                currentMessages = [...currentMessages, systemMessage];
+                setDebuggerState({ messages: currentMessages });
+                continue;
+            }
+
+            const newContent = data.response;
+            updateFileContent(selectedRepo.id, normalizedPath, newContent);
+            toast({
+                title: "File Updated by AI",
+                description: `${normalizedPath} has been modified based on your instruction.`,
+            });
+            addTask({
+                id: Date.now().toString(),
+                repositoryId: selectedRepo.id,
+                prompt: `Natural Language Edit: ${modificationPrompt}`,
+                status: 'completed',
+                createdAt: new Date().toISOString(),
+                originalCode: fileToModify.content,
+                modifiedCode: newContent,
+            });
+
+            const systemMessage: ChatMessage = { id: Date.now().toString(), role: 'system', content: `Success: I have applied the changes to \`${normalizedPath}\`. What is the next step?` };
+            currentMessages = [...currentMessages, systemMessage];
+            setDebuggerState({ messages: currentMessages });
+            continue;
+
         } else if (action.action === 'finish') {
-          currentMessages = handleAiMessage(action.message, currentMessages);
-          break; // End of loop
+          // Final AI message is inside the action, so we don't need to call handleAiMessage
+          const finalMessage: ChatMessage = { id: Date.now().toString(), role: 'ai', content: action.message };
+          currentMessages = [...currentMessages, finalMessage];
+          setDebuggerState({ messages: currentMessages });
+          break; 
         
         } else {
-          currentMessages = handleAiMessage("The AI returned an unknown action. Please try again.", currentMessages);
+          const unknownActionMessage: ChatMessage = { id: Date.now().toString(), role: 'system', content: "The AI returned an unknown or invalid action. Please try again or ask for clarification." };
+          currentMessages = [...currentMessages, unknownActionMessage];
+          setDebuggerState({ messages: currentMessages });
           break;
         }
-      }
-
-      if (turn >= MAX_TURNS) {
-        handleAiMessage("The AI took too many steps to complete the request. Please try again with a more specific prompt.", currentMessages);
       }
 
     } catch (error) {

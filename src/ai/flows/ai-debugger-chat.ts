@@ -27,7 +27,10 @@ You have access to the following tools:
 2.  **writeFile**: Writes content to a file. Use this to apply changes, fix bugs, or create new files. This action overwrites the entire file content. You MUST read a file before you write to it.
     -   JSON format: \`{"action": "writeFile", "path": "path/to/the/file.ext", "content": "The new full content of the file..."}\`
 
-3.  **finish**: Ends the conversation and provides a final summary to the user. Use this action when you have completed all the necessary steps.
+3.  **naturalLanguageWriteFile**: Modifies an existing file based on a natural language instruction. Use this for complex changes where you need the AI to generate the full code for you. You MUST have read the file's content in a previous turn before using this tool.
+    -   JSON format: \`{"action": "naturalLanguageWriteFile", "path": "path/to/the/file.ext", "prompt": "a detailed prompt describing the changes to make to the file"}\`
+
+4.  **finish**: Ends the conversation and provides a final summary to the user. Use this action when you have completed all the necessary steps.
     -   JSON format: \`{"action": "finish", "message": "Your final response to the user."}\`
 
 **RULES:**
@@ -75,123 +78,47 @@ export async function runAiAgent(input: AiAgentInput): Promise<AiAgentOutput> {
       content: msg.content,
     }));
 
-    // The AI agent always responds with an action, which might be in the last message
-    const lastAiMessage = messages.findLast(msg => msg.role === 'ai');
-    let potentialAction: any = null;
-    if (lastAiMessage) {
-        try {
-            // Models might wrap JSON in backticks or other characters
-            const jsonMatch = lastAiMessage.content.match(/```json\n([\s\S]*?)\n```/);
-            if (jsonMatch && jsonMatch[1]) {
-                potentialAction = JSON.parse(jsonMatch[1]);
-            } else {
-                potentialAction = JSON.parse(lastAiMessage.content);
-            }
-        } catch (e) {
-            console.warn("Could not parse last AI message as JSON action:", e);
-            // If it's not a valid JSON action, it's probably just a conversational response.
-            // We'll proceed to generate a new action.
-        }
-    }
-
-    let nextAgentAction: any;
-
-    if (potentialAction && potentialAction.action) {
-        nextAgentAction = potentialAction; // Use the action parsed from the last AI message
-    } else {
-        // If no valid action was found in the last AI message, send a new request
-        // to the model to generate the next action based on the conversation history.
-        const response = await fetch(new URL('/api/ollama', process.env.NEXT_PUBLIC_APP_URL), {
+    const response = await fetch(new URL('/api/ollama', process.env.NEXT_PUBLIC_APP_URL), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            ollamaUrl,
+            path: '/api/generate', // Use the generate endpoint
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                ollamaUrl,
-                path: '/api/generate', // Use the generate endpoint
-                method: 'POST',
-                body: {
-                    model: ollamaModel,
-                    // Combine system prompt and simplified messages into a single prompt string
-                    prompt: `${systemPrompt}\n\n**CONVERSATION HISTORY:**\n${simplifiedMessages.map(msg => `${msg.role}: ${msg.content}`).join('\n\n')}\n\n**YOUR TURN (JSON only):**`,
-                    stream: false,
-                    format: 'json', // Ensure the output is JSON
-                    // Setting stop sequences can help prevent the model from outputting extra text after the JSON
-                    stop: ["\nuser:", "\nassistant:"]
-                },
-            }),
-        });
+            body: {
+                model: ollamaModel,
+                // Combine system prompt and simplified messages into a single prompt string
+                prompt: `${systemPrompt}\n\n**CONVERSATION HISTORY:**\n${simplifiedMessages.map(msg => `${msg.role}: ${msg.content}`).join('\n\n')}\n\n**YOUR TURN (JSON only):**`,
+                stream: false,
+                format: 'json', // Ensure the output is JSON
+                stop: ["\nuser:", "\nassistant:"]
+            },
+        }),
+    });
 
-        const data = await response.json();
+    const data = await response.json();
 
-        if (!response.ok) {
-           throw new Error(`Ollama server responded with status ${response.status}: ${data.error || JSON.stringify(data)}`);
+    if (!response.ok) {
+        throw new Error(`Ollama server responded with status ${response.status}: ${data.error || JSON.stringify(data)}`);
+    }
+    
+    const rawResponseContent = data.response || '{}';
+    let nextAgentAction;
+    try {
+        const jsonMatch = rawResponseContent.match(/```json\n([\s\S]*?)\n```/);
+        if (jsonMatch && jsonMatch[1]) {
+            nextAgentAction = JSON.parse(jsonMatch[1]);
+        } else {
+            nextAgentAction = JSON.parse(rawResponseContent);
         }
-        
-        // The generate endpoint with format: 'json' returns the response in the 'response' field
-        const rawResponseContent = data.response || '{}';
-        try {
-            const jsonMatch = rawResponseContent.match(/```json\n([\s\S]*?)\n```/);
-            if (jsonMatch && jsonMatch[1]) {
-                nextAgentAction = JSON.parse(jsonMatch[1]);
-            } else {
-                nextAgentAction = JSON.parse(rawResponseContent);
-            }
-        } catch (e) {
-            console.error("Failed to parse AI response as JSON action:", rawResponseContent, e);
-            throw new Error("The AI returned an invalid action format. Please try again.");
-        }
+    } catch (e) {
+        console.error("Failed to parse AI response as JSON action:", rawResponseContent, e);
+        throw new Error("The AI returned an invalid action format. Please try again.");
     }
 
-    // Now execute the action based on nextAgentAction
-    if (nextAgentAction.action === 'readFile') {
-        const normalizedPath = nextAgentAction.path.startsWith('./') ? nextAgentAction.path.substring(2) : nextAgentAction.path;
-        const file = fileList.find(f => f === normalizedPath);
-        if (!file) {
-            return { response: JSON.stringify({ action: "finish", message: `Error: File \`${normalizedPath}\` not found in the repository.` }) };
-        }
-        // In a real application, you'd fetch the file content here.
-        // For this mock, we assume the content is available if the path exists.
-        // The prompt provides the file list, the actual content is handled by the UI.
-        return { response: JSON.stringify(nextAgentAction) }; // Return the readFile action for the UI to process
-    } else if (nextAgentAction.action === 'writeFile') {
-        // This action needs to be handled by the UI (AppLayout.tsx or DebuggerPage.tsx)
-        // The AI generates the action, and the client-side code executes the file write.
-        return { response: JSON.stringify(nextAgentAction) };
-    } else if (nextAgentAction.action === 'naturalLanguageWriteFile') {
-        const { path, prompt, selectedContent } = nextAgentAction;
-        // Fix: 'path' is already a string, no need for path.path
-        const normalizedPath = path.startsWith('./') ? path.substring(2) : path;
-        
-        const fileToModify = fileList.find(f => f === normalizedPath);
-        if (!fileToModify) {
-             return { response: JSON.stringify({ action: "finish", message: `Error: Cannot perform naturalLanguageWriteFile: File \`${normalizedPath}\` not found.` }) };
-        }
+    // Pass the action back to the client to be executed
+    return { response: JSON.stringify(nextAgentAction) };
 
-        // We need the *actual content* of the file to send to /api/generate for modification.
-        // This currently isn't directly available here in runAiAgent from `fileList` which is just paths.
-        // This logic needs to be executed client-side after a readFile, or we need a way to read files from here.
-        // For the purpose of fixing the build errors and demonstrating the tool structure,
-        // I will assume the content would be fetched if this were client-side.
-        // However, since this is a server action, we need actual file content.
-
-        // Simulating file content fetching for a server action.
-        // In a full application, `updateFileContent` would likely be a client-side context function
-        // and file content would be part of the `messages` or `input` from the client after a `readFile` action.
-        // Since this is a server action, we'd need a server-side way to get file content.
-        
-        // For demonstration and error fixing, we will prompt the model to generate the modification
-        // as if it had the content.
-        const fileContentPrompt = selectedContent ? 
-            `Given this selected code snippet from ${normalizedPath}:\n\`\`\`\n${selectedContent}\n\`\`\`\n\nApply the following instruction to it and return ONLY the modified code:\n${prompt}` :
-            `Given the content of file ${normalizedPath}:\n\`\`\`\n(Assume file content is here - in a real scenario, this would be actual content)\n\`\`\`\n\nApply the following instruction to it and return ONLY the modified code:\n${prompt}`;
-        
-        // Return the action for the UI to handle, as file content is typically client-side managed
-        return { response: JSON.stringify(nextAgentAction) }; 
-
-    } else if (nextAgentAction.action === 'finish') {
-        return { response: JSON.stringify(nextAgentAction) };
-    } else {
-        return { response: JSON.stringify({ action: "finish", message: "The AI returned an unknown action. Please try again or ask for clarification." }) };
-    }
   } catch (error) {
     console.error("Error calling Ollama service:", error);
     if (error instanceof Error) {
