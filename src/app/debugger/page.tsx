@@ -296,7 +296,9 @@ Now, provide the complete and modified file content.
           break; 
         
         } else {
-          const unknownActionMessage: ChatMessage = { id: Date.now().toString(), role: 'system', content: "The AI returned an unknown or invalid action. Please try again or ask for clarification." };
+          const unknownAction = JSON.stringify(action);
+          console.error("Unknown AI action received:", unknownAction);
+          const unknownActionMessage: ChatMessage = { id: Date.now().toString(), role: 'system', content: `The AI returned an unknown action: \`${unknownAction}\`. Please try again or rephrase your request.` };
           currentMessages = [...currentMessages, unknownActionMessage];
           setDebuggerState({ messages: currentMessages });
           break;
