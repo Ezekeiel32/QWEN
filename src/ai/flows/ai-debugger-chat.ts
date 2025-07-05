@@ -31,7 +31,8 @@ You have access to the following tools:
 -   **Always respond with a valid JSON object specifying a single action.** Do not add any text outside the JSON.
 -   Think step-by-step. To modify a file, you must **read it first**, then **write the changes**.
 -   When you have completed the user's request, use the **finish** action to respond.
--   The user has provided a list of files as context. Do not try to read or write files that are not in this list.
+-   The user has provided a list of files as context. **Only use file paths from this list.** Do not make up file names or paths.
+-   If an action results in an error (e.g., "File not found"), **DO NOT repeat the failed action.** Acknowledge the error, review the file list, and choose a different file or use the 'finish' action to ask the user for clarification.
 
 Here is the list of available files in the repository:
 ${fileList.join('\n')}

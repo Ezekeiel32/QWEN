@@ -159,10 +159,12 @@ export default function DebuggerPage() {
         }
 
         if (action.action === 'readFile') {
-          const file = selectedRepo.files.find(f => f.path === action.path);
+          // Normalize path from AI to handle cases like "./file.txt"
+          const normalizedPath = action.path.startsWith('./') ? action.path.substring(2) : action.path;
+          const file = selectedRepo.files.find(f => f.path === normalizedPath);
           const messageContent = file
-            ? `I have read the file \`${action.path}\` for you. Here is the content:\n\n\`\`\`\n${file.content}\n\`\`\``
-            : `Error: File \`${action.path}\` not found.`;
+            ? `I have read the file \`${normalizedPath}\` for you. Here is the content:\n\n\`\`\`\n${file.content}\n\`\`\``
+            : `Error: File \`${normalizedPath}\` not found.`;
           
           const systemMessage: ChatMessage = { id: Date.now().toString(), role: 'system', content: messageContent };
           currentMessages = [...currentMessages, systemMessage];
@@ -170,18 +172,21 @@ export default function DebuggerPage() {
           continue; // Continue loop to let AI process the new info
         
         } else if (action.action === 'writeFile') {
-          const originalFile = selectedRepo.files.find(f => f.path === action.path);
+          // Normalize path from AI
+          const normalizedPath = action.path.startsWith('./') ? action.path.substring(2) : action.path;
+          const originalFile = selectedRepo.files.find(f => f.path === normalizedPath);
+
           if (!originalFile) {
-            const systemMessage: ChatMessage = { id: Date.now().toString(), role: 'system', content: `Error: Could not write to file \`${action.path}\` because it was not found.` };
+            const systemMessage: ChatMessage = { id: Date.now().toString(), role: 'system', content: `Error: Could not write to file \`${normalizedPath}\` because it was not found.` };
             currentMessages = [...currentMessages, systemMessage];
             setDebuggerState({ messages: currentMessages });
             continue;
           }
 
-          updateFileContent(selectedRepo.id, action.path, action.content);
+          updateFileContent(selectedRepo.id, normalizedPath, action.content);
           toast({
             title: "File Updated by AI",
-            description: `${action.path} has been modified.`,
+            description: `${normalizedPath} has been modified.`,
           });
           addTask({
             id: Date.now().toString(),
@@ -193,7 +198,7 @@ export default function DebuggerPage() {
             modifiedCode: action.content,
           });
 
-          const systemMessage: ChatMessage = { id: Date.now().toString(), role: 'system', content: `Success: The file \`${action.path}\` has been updated.` };
+          const systemMessage: ChatMessage = { id: Date.now().toString(), role: 'system', content: `Success: The file \`${normalizedPath}\` has been updated.` };
           currentMessages = [...currentMessages, systemMessage];
           setDebuggerState({ messages: currentMessages });
           continue;
