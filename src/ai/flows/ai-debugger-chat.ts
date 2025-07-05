@@ -9,39 +9,36 @@
  * - AiAgentOutput - The return type for the runAiAgent function.
  */
 import {z} from 'zod';
-import type { ChatMessage, CodeFile } from '@/types'; // Import CodeFile type
+import type { ChatMessage } from '@/types';
 
 const getSystemPrompt = (repositoryName: string, fileList: string[]) => {
-  // Correctly escape backticks and newlines within the template literal
-  // For markdown code blocks: use ``` followed by a language (e.g., json)
-  // For inline code: use ` (escaped as \`)
-  return `You are an expert AI software developer. You are QwenCode Weaver's AI agent, inside a web-based code editor for a repository named "${repositoryName}". Your goal is to help the user with their requests by reading and writing files.
+  return `You are an expert AI software developer named QwenCode Weaver. You are working in a web-based code editor for a repository named "${repositoryName}". Your goal is to help the user with their requests by reading and writing files.
 
-You operate in a loop. On each turn, you will be given the full chat history. You MUST respond with a JSON object that specifies your next action. **Do not add any text outside the JSON object.**
+You operate in a loop. On each turn, you are given the conversation history and a list of available files. You MUST respond with a single, valid JSON object describing your next action. **Do not add any other text, explanation, or markdown formatting around the JSON object.**
 
-**You MUST choose one of the following actions:**
+Your response MUST be a JSON object with an "action" field and other fields depending on the action. Choose one of the following actions:
 
-1.  **\`readFile\`**: Reads the content of a single file. Use this when you need to understand what's in a file before making changes.
-    -   JSON format: \`{"action": "readFile", "path": "path/to/the/file.ext"}\`
+1.  **readFile**: To understand the current state of a file before modifying it.
+    -   JSON: \`{"action": "readFile", "path": "path/to/the/file.ext"}\`
 
-2.  **\`writeFile\`**: Writes content to a file. Use this to apply changes, fix bugs, or create new files. This action overwrites the entire file content. You MUST read a file before you write to it.
-    -   JSON format: \`{"action": "writeFile", "path": "path/to/the/file.ext", "content": "The new full content of the file..."}\`
+2.  **writeFile**: To apply changes or create a new file. You MUST have read the file in a previous turn before writing to it.
+    -   JSON: \`{"action": "writeFile", "path": "path/to/the/file.ext", "content": "The new full content of the file..."}\`
 
-3.  **\`naturalLanguageWriteFile\`**: Modifies an existing file based on a natural language instruction. Use this for complex changes where you need the AI to generate the full code for you. You MUST have read the file's content in a previous turn before using this tool.
-    -   JSON format: \`{"action": "naturalLanguageWriteFile", "path": "path/to/the/file.ext", "prompt": "a detailed prompt describing the changes to make to the file"}\`
+3.  **naturalLanguageWriteFile**: To perform complex modifications to a file based on a high-level instruction. You MUST have read the file in a previous turn before using this tool.
+    -   JSON: \`{"action": "naturalLanguageWriteFile", "path": "path/to/the/file.ext", "prompt": "a detailed prompt describing the changes to make to the file"}\`
 
-4.  **\`finish\`**: Ends the conversation and provides a final summary to the user. Use this action when you have completed all the necessary steps, or if the user's message is conversational (e.g., a greeting).
-    -   JSON format: \`{"action": "finish", "message": "Your final response to the user."}\`
+4.  **finish**: To end the conversation and provide a final response to the user. Use this when the task is complete, or if the user's message is conversational (like "hello" or "thank you").
+    -   JSON: \`{"action": "finish", "message": "Your final response to the user."}\`
     -   Example for a greeting: \`{"action": "finish", "message": "Hello! How can I assist you with your code today?"}\`
 
-**RULES:**
--   Your response MUST be a single, valid JSON object and nothing else.
--   If the user's message is a greeting or a general question not related to a file, respond with the "finish" action.
--   To modify a file, you must **read it first**, then use **writeFile** or **naturalLanguageWriteFile**.
--   **Only use file paths from the list below.** Do not make up file names or paths.
--   If an action results in an error (e.g., "File not found"), **DO NOT repeat the failed action.** Acknowledge the error, review the file list, and choose a different file or use the 'finish' action to ask the user for clarification.
+**IMPORTANT RULES:**
+-   Your response MUST be only the JSON object.
+-   If the user greets you, use the "finish" action with a friendly response.
+-   **Only use file paths from the provided list.** Do not make up file names.
+-   If an action fails (e.g., "File not found"), DO NOT repeat it. Acknowledge the error and choose a different action, or use "finish" to ask for clarification.
+-   To modify a file, you MUST read it first.
 
-Here is the list of available files in the repository:
+AVAILABLE FILES:
 ${fileList.join('\n')}
 `;
 };
@@ -55,10 +52,16 @@ const AiAgentInputSchema = z.object({
 });
 export type AiAgentInput = z.infer<typeof AiAgentInputSchema>;
 
-const AiAgentOutputSchema = z.object({
-  response: z.string().describe('The raw JSON response from the AI model.'),
+// The output is the raw action object from the AI.
+const AiAgentActionSchema = z.object({
+  action: z.string(),
+  path: z.string().optional(),
+  content: z.string().optional(),
+  prompt: z.string().optional(),
+  message: z.string().optional(),
 });
-export type AiAgentOutput = z.infer<typeof AiAgentOutputSchema>;
+export type AiAgentOutput = z.infer<typeof AiAgentActionSchema>;
+
 
 export async function runAiAgent(input: AiAgentInput): Promise<AiAgentOutput> {
   const { repositoryName, fileList, messages, ollamaUrl, ollamaModel } = input;
@@ -88,11 +91,9 @@ export async function runAiAgent(input: AiAgentInput): Promise<AiAgentOutput> {
             method: 'POST',
             body: {
                 model: ollamaModel,
-                // Combine system prompt and simplified messages into a single prompt string
                 prompt: `${systemPrompt}\n\n**CONVERSATION HISTORY:**\n${simplifiedMessages.map(msg => `${msg.role}: ${msg.content}`).join('\n\n')}\n\n**YOUR TURN (JSON only):**`,
                 stream: false,
                 format: 'json', // Ensure the output is JSON
-                stop: ["\nuser:", "\nassistant:"]
             },
         }),
     });
@@ -103,22 +104,24 @@ export async function runAiAgent(input: AiAgentInput): Promise<AiAgentOutput> {
         throw new Error(`Ollama server responded with status ${response.status}: ${data.error || JSON.stringify(data)}`);
     }
     
+    // The raw response from Ollama should be a string containing JSON.
     const rawResponseContent = data.response || '{}';
-    let nextAgentAction;
     try {
-        const jsonMatch = rawResponseContent.match(/```json\n([\s\S]*?)\n```/);
-        if (jsonMatch && jsonMatch[1]) {
-            nextAgentAction = JSON.parse(jsonMatch[1]);
-        } else {
-            nextAgentAction = JSON.parse(rawResponseContent);
+        // Since we requested format: 'json', we can parse it directly.
+        const nextAgentAction = JSON.parse(rawResponseContent);
+        // Validate that it has an 'action' property.
+        if (typeof nextAgentAction.action !== 'string') {
+          throw new Error('AI response is missing the "action" field.');
         }
+        return nextAgentAction as AiAgentOutput;
     } catch (e) {
         console.error("Failed to parse AI response as JSON action:", rawResponseContent, e);
-        throw new Error("The AI returned an invalid action format. Please try again.");
+        // Return a finish action with an error message to prevent a loop.
+        return {
+          action: 'finish',
+          message: `I encountered an internal error trying to understand the model's response. The response was: ${rawResponseContent}`
+        };
     }
-
-    // Pass the action back to the client to be executed
-    return { response: JSON.stringify(nextAgentAction) };
 
   } catch (error) {
     console.error("Error calling Ollama service:", error);

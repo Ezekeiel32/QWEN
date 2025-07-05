@@ -13,7 +13,7 @@ import { useAppContext } from "@/contexts/AppContext";
 import { useSettings } from "@/hooks/use-settings";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { runAiAgent } from "@/ai/flows/ai-debugger-chat";
+import { runAiAgent, type AiAgentOutput } from "@/ai/flows/ai-debugger-chat";
 import { useToast } from "@/hooks/use-toast";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import type { CodeFile } from "@/types";
@@ -135,7 +135,6 @@ export default function DebuggerPage() {
       let turn = 0;
       while (true) {
         turn++;
-        // Safety break for infinite loops, though the AI should eventually `finish`.
         if (turn > 15) {
           handleAiMessage("The AI agent seems to be stuck in a loop. Please try rephrasing your request.", currentMessages);
           break;
@@ -149,19 +148,10 @@ export default function DebuggerPage() {
           ollamaModel: settings.ollamaModel,
         };
 
-        const agentResponse = await runAiAgent(agentInput);
-        let action;
-        try {
-          const jsonResponse = agentResponse.response.trim().replace(/^```json\n?/, '').replace(/\n?```$/, '');
-          action = JSON.parse(jsonResponse);
-        } catch (e) {
-          const errorMessage = "The AI returned an invalid response. Please try again.";
-          currentMessages = handleAiMessage(errorMessage, currentMessages);
-          break;
-        }
+        const action: AiAgentOutput = await runAiAgent(agentInput);
         
         // Add AI's action/thought process to chat for visibility
-        const aiThoughtMessage: ChatMessage = { id: Date.now().toString(), role: 'ai', content: agentResponse.response };
+        const aiThoughtMessage: ChatMessage = { id: Date.now().toString(), role: 'ai', content: JSON.stringify(action, null, 2) };
         currentMessages = [...currentMessages, aiThoughtMessage];
         setDebuggerState({ messages: currentMessages });
 
@@ -172,7 +162,7 @@ export default function DebuggerPage() {
              const systemMessage: ChatMessage = { id: Date.now().toString(), role: 'system', content: `Error: AI tried to read a file with an empty path.` };
              currentMessages = [...currentMessages, systemMessage];
              setDebuggerState({ messages: currentMessages });
-             continue; // Let AI try again
+             continue;
           }
 
           const file = selectedRepo.files.find(f => f.path === normalizedPath);
@@ -187,6 +177,14 @@ export default function DebuggerPage() {
         
         } else if (action.action === 'writeFile') {
           const normalizedPath = action.path?.startsWith('./') ? action.path.substring(2) : action.path;
+          
+          if (!normalizedPath || action.content === undefined) {
+            const systemMessage: ChatMessage = { id: Date.now().toString(), role: 'system', content: `Error: AI tried to write a file with an invalid path or no content.` };
+            currentMessages = [...currentMessages, systemMessage];
+            setDebuggerState({ messages: currentMessages });
+            continue;
+          }
+
           const originalFile = selectedRepo.files.find(f => f.path === normalizedPath);
 
           if (!originalFile) {
@@ -219,6 +217,14 @@ export default function DebuggerPage() {
         } else if (action.action === 'naturalLanguageWriteFile') {
             const { path, prompt: modificationPrompt } = action;
             const normalizedPath = path?.startsWith('./') ? path.substring(2) : path;
+            
+            if (!normalizedPath || !modificationPrompt) {
+              const systemMessage: ChatMessage = { id: Date.now().toString(), role: 'system', content: `Error: AI tried to modify a file with an invalid path or no instruction.` };
+              currentMessages = [...currentMessages, systemMessage];
+              setDebuggerState({ messages: currentMessages });
+              continue;
+            }
+
             const fileToModify = selectedRepo.files.find(f => f.path === normalizedPath);
 
             if (!fileToModify) {
@@ -289,8 +295,8 @@ Now, provide the complete and modified file content.
             continue;
 
         } else if (action.action === 'finish') {
-          // Final AI message is inside the action, so we don't need to call handleAiMessage
-          const finalMessage: ChatMessage = { id: Date.now().toString(), role: 'ai', content: action.message };
+          const finalMessageContent = action.message || "The agent has finished its task.";
+          const finalMessage: ChatMessage = { id: Date.now().toString(), role: 'ai', content: finalMessageContent };
           currentMessages = [...currentMessages, finalMessage];
           setDebuggerState({ messages: currentMessages });
           break; 
@@ -298,7 +304,7 @@ Now, provide the complete and modified file content.
         } else {
           const unknownAction = JSON.stringify(action);
           console.error("Unknown AI action received:", unknownAction);
-          const unknownActionMessage: ChatMessage = { id: Date.now().toString(), role: 'system', content: `The AI returned an unknown action: \`${unknownAction}\`. Please try again or rephrase your request.` };
+          const unknownActionMessage: ChatMessage = { id: Date.now().toString(), role: 'system', content: `The AI returned an action I don't understand: \`${unknownAction}\`. Please try rephrasing your request.` };
           currentMessages = [...currentMessages, unknownActionMessage];
           setDebuggerState({ messages: currentMessages });
           break;
