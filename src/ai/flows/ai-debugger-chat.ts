@@ -56,7 +56,7 @@ const AiAgentInputSchema = z.object({
 });
 export type AiAgentInput = z.infer<typeof AiAgentInputSchema>;
 
-export const AiAgentOutputSchema = z.object({
+const AiAgentOutputSchema = z.object({
   response: z.string().describe('The raw JSON response from the AI model.'),
 });
 export type AiAgentOutput = z.infer<typeof AiAgentOutputSchema>;
