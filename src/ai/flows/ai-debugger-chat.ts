@@ -14,9 +14,18 @@ import type { ChatMessage } from '@/types';
 const getSystemPrompt = (repositoryName: string, fileList: string[]) => {
   return `You are an expert AI software developer named QwenCode Weaver. You are working in a web-based code editor for a repository named "${repositoryName}". Your goal is to help the user with their requests by reading and writing files.
 
-You operate in a loop. On each turn, you are given the conversation history and a list of available files. You MUST respond with a single, valid JSON object describing your next action. **Do not add any other text, explanation, or markdown formatting around the JSON object.**
+You operate in a loop. On each turn, you are given the conversation history and a list of available files. You MUST respond with a single, valid JSON object and nothing else.
 
-Your response MUST be a JSON object with an "action" field and other fields depending on the action. Choose one of the following actions:
+Your response MUST be a JSON object that adheres to this schema:
+{
+  "action": "string",
+  "path": "string" | undefined,
+  "content": "string" | undefined,
+  "prompt": "string" | undefined,
+  "message": "string" | undefined
+}
+
+Choose one of the following actions:
 
 1.  **readFile**: To understand the current state of a file before modifying it.
     -   JSON: \`{"action": "readFile", "path": "path/to/the/file.ext"}\`
@@ -29,11 +38,10 @@ Your response MUST be a JSON object with an "action" field and other fields depe
 
 4.  **finish**: To end the conversation and provide a final response to the user. Use this when the task is complete, or if the user's message is conversational (like "hello" or "thank you").
     -   JSON: \`{"action": "finish", "message": "Your final response to the user."}\`
-    -   Example for a greeting: \`{"action": "finish", "message": "Hello! How can I assist you with your code today?"}\`
 
 **IMPORTANT RULES:**
--   Your response MUST be only the JSON object.
--   If the user greets you, use the "finish" action with a friendly response.
+-   Your response MUST be only the JSON object. Do not add any text before or after the JSON.
+-   If the user greets you, use the "finish" action with a friendly response like: \`{"action": "finish", "message": "Hello! How can I assist you with your code today?"}\`
 -   **Only use file paths from the provided list.** Do not make up file names.
 -   If an action fails (e.g., "File not found"), DO NOT repeat it. Acknowledge the error and choose a different action, or use "finish" to ask for clarification.
 -   To modify a file, you MUST read it first.
@@ -95,7 +103,6 @@ export async function runAiAgent(input: AiAgentInput): Promise<AiAgentOutput> {
                 model: ollamaModel,
                 prompt: `${systemPrompt}\n\n**CONVERSATION HISTORY:**\n${simplifiedMessages.map(msg => `${msg.role}: ${msg.content}`).join('\n\n')}\n\n**YOUR TURN (JSON only):**`,
                 stream: false,
-                format: 'json', // Ensure the output is JSON
             },
         }),
     });
@@ -106,12 +113,17 @@ export async function runAiAgent(input: AiAgentInput): Promise<AiAgentOutput> {
         throw new Error(`Ollama server responded with status ${response.status}: ${data.error || JSON.stringify(data)}`);
     }
     
-    // The raw response from Ollama should be a string containing JSON.
-    const rawResponseContent = data.response || '{}';
+    const rawResponseContent = data.response || '';
     try {
-        // Since we requested format: 'json', we can parse it directly.
-        const nextAgentAction = JSON.parse(rawResponseContent);
-        // Validate that it has an 'action' property.
+        // Find the JSON block within the response, in case the model adds extra text.
+        const jsonMatch = rawResponseContent.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+            throw new Error('No JSON object found in the AI response.');
+        }
+
+        const jsonString = jsonMatch[0];
+        const nextAgentAction = JSON.parse(jsonString);
+
         if (typeof nextAgentAction.action !== 'string') {
           throw new Error('AI response is missing the "action" field.');
         }
@@ -121,7 +133,7 @@ export async function runAiAgent(input: AiAgentInput): Promise<AiAgentOutput> {
         // Return a finish action with an error message to prevent a loop.
         return {
           action: 'finish',
-          message: `I encountered an internal error trying to understand the model's response. The response was: ${rawResponseContent}`
+          message: `I encountered an internal error and could not understand the model's response. The raw response was: \n\n\`\`\`\n${rawResponseContent}\n\`\`\``
         };
     }
 
