@@ -1,2 +1,7 @@
-// This file is intentionally left blank.
-// The application uses a direct connection to a local Ollama server, not Genkit.
+import {genkit} from 'genkit';
+import {googleAI} from '@genkit-ai/googleai';
+
+export const ai = genkit({
+  plugins: [googleAI()],
+  model: 'googleai/gemini-2.0-flash',
+});

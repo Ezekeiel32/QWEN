@@ -1,1 +1,6 @@
-// This file is intentionally left blank as the Genkit CLI is not used in this project.
+import { config } from 'dotenv';
+config();
+
+import '@/ai/flows/quantize-colab-model.ts';
+import '@/ai/flows/configure-model-for-dataset.ts';
+import '@/ai/flows/hs-qnn-parameter-advisor.ts';
